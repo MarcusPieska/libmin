@@ -105,6 +105,7 @@
 		SOCKET					socket;			// hard socket
 		bool					blocking;		// is blocking
 		bool					broadcast;		// is broadcast
+		int 					security; 		// > 0 indicates openssl is used //MP
 	};
 
 
