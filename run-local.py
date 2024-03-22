@@ -19,3 +19,13 @@ for path in paths:
   os.system(run_command)
   time.sleep(2)
   
+if 0:  
+  run_command = "%s" %(paths[1])
+  print("Running server executable in a new xterm window...\n")
+  print("Command: '%s'" %(run_command))
+  os.system(run_command)
+  time.sleep(2)  
+  
+if 0:  
+  run_command = "gdb %s" %(paths[1])
+  os.system(run_command)

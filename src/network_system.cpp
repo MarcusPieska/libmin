@@ -29,8 +29,99 @@ NetworkSystem::NetworkSystem ()
 	mbDebugNet = false;
 }
 
+void make_sock_block (int sock) 
+{
+    int flags = fcntl(sock, F_GETFL, 0);
+    if (flags == -1) {
+        perror("get flags failed");
+        exit(EXIT_FAILURE);
+    } else {
+		std::cout << "Call to get flags succeded" << std::endl;
+	}
+    
+    flags &= ~O_NONBLOCK;
+    if (fcntl(sock, F_SETFL, flags) == -1) {
+        perror("set blocking option failed");
+        exit(EXIT_FAILURE);
+    } else {
+		std::cout << "Call to set blocking succeded" << std::endl;
+	}
+}
+
+void make_sock_non_block (int sock) 
+{
+    int flags = fcntl(sock, F_GETFL, 0);
+    if (flags == -1) {
+        perror("get flags failed");
+        exit(EXIT_FAILURE);
+    } else {
+		std::cout << "Call to get flags succeded" << std::endl;
+	}
+	
+    flags |= O_NONBLOCK;
+    if (fcntl(sock, F_SETFL, flags) == -1) {
+        perror("set non-blocking option failed");
+        exit(EXIT_FAILURE);
+    } else {
+		std::cout << "Call to set non-blocking succeded" << std::endl;
+	}
+}
+
 //--------------------------------------------------- NETWORK SERVER
 //
+// MP: new, should be called by server after accept
+void NetworkSystem::setupServerOpenssl (int sock) 
+{
+	NetSock& s = mSockets[sock];
+    make_sock_block (s.socket);
+    std::cout << "Setting up OpenSSL on server sock; " << s.socket << std::endl;
+    
+	SSL_CTX* sslctx = SSL_CTX_new(TLS_server_method());
+	int ret, exp;
+
+	exp = SSL_OP_SINGLE_DH_USE;
+	if (((ret = SSL_CTX_set_options(sslctx, exp)) & exp) != exp) {
+		perror("set ssl option failed");
+		exit(EXIT_FAILURE);
+	} else {
+		std::cout << "Call to set ssl option succeded" << std::endl;
+	}
+
+	//SSL_CTX_set_verify(s.ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, NULL); // client needs cert for this ? 
+
+	if ((ret = SSL_CTX_use_certificate_file(sslctx, "/home/w/Downloads/networking-opensll/keys/server.pem" , SSL_FILETYPE_PEM)) <= 0) {
+		perror("use certificate failed");
+		exit(EXIT_FAILURE);
+	} else {
+		std::cout << "Call to use certificate succeded" << std::endl;
+	}
+
+	if ((ret = SSL_CTX_use_PrivateKey_file(sslctx, "/home/w/Downloads/networking-opensll/keys/server.key", SSL_FILETYPE_PEM)) <= 0) {
+		perror("use private key failed");
+		exit(EXIT_FAILURE);
+	} else {
+		std::cout << "Call to use private key succeded" << std::endl;
+	}
+
+	s.ssl = SSL_new(sslctx);
+	if (SSL_set_fd(s.ssl, s.socket) <= 0) {
+		perror("set ssl fd failed");
+		exit(EXIT_FAILURE);
+	} else {
+		std::cout << "Call to set ssl fd succeded" << std::endl;
+	}
+
+	if ((ret = SSL_accept(s.ssl)) <= 0) {
+		SSL_shutdown(s.ssl);
+		SSL_free(s.ssl);
+		perror("ssl accept failed");
+		exit(EXIT_FAILURE);
+	} else {
+		std::cout << "Call to ssl accept succeded" << std::endl;
+	}
+	
+	make_sock_non_block (s.socket);
+}
 
 void NetworkSystem::netStartServer ( netPort srv_port )
 {
@@ -71,6 +162,7 @@ void NetworkSystem::netServerListen ( int sock )
 		if (mbVerbose) dbgprintf ( "Connection not accepted.\n");
 		return;
 	}
+
 	// Get server IP. Listen/accept happens on ANY address (0.0.0.0)
 	// we want the literal server IP for final connection
 	netIP srv_ip = mHostIP;
@@ -85,6 +177,12 @@ void NetworkSystem::netServerListen ( int sock )
 	s.dest.ipL = cli_ip;		// assign client IP
 	s.dest.port = cli_port;		// assign client port
 	s.status = NET_CONNECTED;	// connected
+
+	// MP: this should be the right spot; setup ssl if security is larger that zero
+	if ( s.security == 1 ) {
+		setupServerOpenssl( srv_sock_tcp );
+		s.security++;
+	}
 
 	// Send TCP connected event to client
 	Event e;
@@ -112,6 +210,71 @@ void NetworkSystem::netServerListen ( int sock )
 
 //----------------------------------------------------------- NETWORK CLIENT
 //
+// MP: new, should be called by client after connect
+void NetworkSystem::setupClientOpenssl (int sock) 
+{   
+	NetSock& s = mSockets[sock];
+	make_sock_block (s.socket);
+	std::cout << "Setting up OpenSSL on client sock; " << s.socket << std::endl;
+	
+	SSL_load_error_strings();	 
+	OpenSSL_add_ssl_algorithms();
+	int ret, exp;
+
+	s.ctx = SSL_CTX_new(TLS_client_method());
+	if (!s.ctx) {
+		perror("ctx failed");
+		ERR_print_errors_fp(stderr);
+		exit(EXIT_FAILURE);
+	} else {
+		std::cout << "Call to ctx succeded" << std::endl;
+	}
+	
+	exp = SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 | SSL_OP_NO_TLSv1;
+	if (((ret = SSL_CTX_set_options(s.ctx, exp)) & exp) != exp) {
+		perror("set ssl option failed");
+		exit(EXIT_FAILURE);
+	} else {
+		std::cout << "Call to set ssl option succeded" << std::endl;
+	}
+
+	SSL_CTX_set_verify(s.ctx, SSL_VERIFY_PEER, NULL);
+
+	if (!SSL_CTX_load_verify_locations(s.ctx, "/home/w/Downloads/networking-opensll/keys/server.pem", NULL)) {
+		perror("load verify locations failed");
+		ERR_print_errors_fp(stderr);
+		exit(EXIT_FAILURE);
+	} else {
+		std::cout << "Call to load verify locations succeded" << std::endl;
+	}		
+
+	s.ssl = SSL_new(s.ctx);
+	if (!s.ssl) {
+		perror("ssl failed");
+		ERR_print_errors_fp(stderr);
+		exit(EXIT_FAILURE);
+	} else {
+		std::cout << "Call to ssl succeded" << std::endl;
+	}	
+	
+	if (SSL_set_fd(s.ssl, s.socket) != 1) {
+		perror("ssl set fd connect failed");		
+		exit(EXIT_FAILURE);
+	} else {
+		std::cout << "Call to ssl set fd succeded" << std::endl;
+	}		
+	
+	if (SSL_connect(s.ssl) != 1) {
+		perror("ssl connect failed");
+		ERR_print_errors_fp(stderr);
+		exit(EXIT_FAILURE);
+	} else {
+		std::cout << "Call to ssl connect succeded" << std::endl;
+	}  
+	
+	make_sock_non_block (s.socket);
+}
+
 void NetworkSystem::netStartClient ( netPort cli_port )
 {
 	// Network System is running in client mode
@@ -123,6 +286,7 @@ void NetworkSystem::netStartClient ( netPort cli_port )
 	netAddSocket ( NET_CLI, NET_TCP, NET_OFF, false, 
 					NetAddr(NET_ANY, mHostName, mHostIP, cli_port), NetAddr() );
 }
+
 int NetworkSystem::netClientConnectToServer(std::string srv_name, netPort srv_port, bool blocking )
 {
 	NetSock cs;
@@ -200,6 +364,13 @@ int NetworkSystem::netClientConnectToServer(std::string srv_name, netPort srv_po
 		int result = netSocketConnect ( cli_sock_tcp );
 		if (result !=0 ) netReportError ( result );
 	}
+	
+	// MP: this should be the right spot; setup ssl if security is larger that zero
+	if ( mSockets[cli_sock_tcp].security == 1 ) {
+		setupClientOpenssl( cli_sock_tcp );
+		mSockets[cli_sock_tcp].security++;
+	}
+	
 	return cli_sock_tcp;		// return socket for this connection
 }
 
@@ -345,6 +516,7 @@ int NetworkSystem::netAddSocket ( int side, int mode, int status, bool block, Ne
 	s.timeout.tv_sec = 0; s.timeout.tv_usec = 0;
 	s.blocking = block;
 	s.broadcast = 1;
+	s.security = 1; // MP: use openssl by default
 
 	int n = mSockets.size();
 	mSockets.push_back ( s );

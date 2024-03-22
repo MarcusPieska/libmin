@@ -142,6 +142,9 @@
 		EventPool*  getPool()						{ return mEventPool; }
 
 	public:
+	    void setupServerOpenssl( int sock ); // MP: new
+		void setupClientOpenssl( int sock ); // MP: new
+	
 
 		EventPool*					mEventPool;				// Event Memory Pool
 		EventQueue					mEventQueue;			// Network Event queue

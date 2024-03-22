@@ -43,6 +43,10 @@
 		typedef int SOCKET;
     #endif
 
+	#include <openssl/bio.h>					// MP: Same cross-platform ? Tentative: Yes
+	#include <openssl/ssl.h>
+	#include <openssl/err.h>
+
 	#include "event_system.h"
 
 	#define NET_ERR				-1
@@ -105,7 +109,11 @@
 		SOCKET					socket;			// hard socket
 		bool					blocking;		// is blocking
 		bool					broadcast;		// is broadcast
-		int 					security; 		// > 0 indicates openssl is used //MP
+		int 					security; 		// MP: > 0 indicates openssl is used //MP
+		
+		SSL_CTX 				*ctx; 			// MP: Need to read up on these before commenting; Same cross-platform ? Tentative: Yes
+		SSL 					*ssl;			// MP:
+		BIO 					*bio;			// MP:
 	};
 
 
