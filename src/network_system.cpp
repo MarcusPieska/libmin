@@ -656,6 +656,7 @@ int NetworkSystem::netRecieveData ()
 	int result, maxfd=-1;
 
 	// Get all sockets that are Enabled or Connected
+	redo_select:
 	#ifdef PROFILE_NET
 		PERF_PUSH ( "socklist" );
 	#endif
@@ -738,6 +739,9 @@ int NetworkSystem::netRecieveData ()
 		PERF_PUSH ( "recv" );
 	#endif
 	result = netSocketRecv ( curr_socket, mBuffer, NET_BUFSIZE-1, mBufferLen );
+	if ( result == SSL_ERROR_WANT_READ && mSockets[curr_socket].security > 1 ) { // MP: this is a little hacky
+	  goto redo_select;	
+	}
 	if ( result!=0 || mBufferLen==0 ) {
 		netReportError ( result );		// Recv failed. Report net error
 		return 0;
@@ -1370,32 +1374,8 @@ int NetworkSystem::netSocketRecv ( int sock, char* buf, int buflen, int& recvlen
 		} else {
 			result = SSL_read( s.ssl, buf, buflen );
 			if ( result <= 0 ) {	
-				int err = SSL_get_error( s.ssl, result );
-				switch (err) {
-					case SSL_ERROR_WANT_READ:
-						std::cout <<"SSL_read returned SSL_ERROR_WANT_READ: Operation did not complete; the same call can be attempted again later" << std::endl;
-						// Here, you would typically wait for the socket to become readable again before retrying SSL_read
-						break;
-					case SSL_ERROR_WANT_WRITE:
-						std::cout <<"SSL_read returned SSL_ERROR_WANT_WRITE: Operation did not complete; a write operation must be done to continue" << std::endl;
-						// Here, you would typically wait for the socket to become writable before continuing
-						break;
-					case SSL_ERROR_ZERO_RETURN:
-						std::cout <<"SSL_read returned SSL_ERROR_ZERO_RETURN: The connection has been closed" << std::endl;
-						// Handle clean shutdown
-						break;
-					case SSL_ERROR_SYSCALL:
-						std::cout <<"SSL_read returned SSL_ERROR_SYSCALL: Some I/O error occurred" << std::endl;
-						// Handle I/O error
-						break;
-					case SSL_ERROR_SSL:
-						std::cout <<"SSL_read returned SSL_ERROR_SSL: A failure in the SSL library occurred" << std::endl;
-						// Handle SSL error, possibly a protocol error
-						break;
-					default:
-						std::cout <<"SSL_read returned an unexpected error:" << err << std::endl;
-						// Handle unexpected error
-						break;		
+				if ( SSL_get_error( s.ssl, result ) == SSL_ERROR_WANT_READ ) { // SSL_ERROR_WANT_WRITE 
+					return SSL_ERROR_WANT_READ;
 				}
 			}
 		}
