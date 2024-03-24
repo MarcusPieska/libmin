@@ -172,12 +172,14 @@ install ( FILES ${GLEW_FILES} DESTINATION ${_bin_path} )
 # header files
 _INSTALL_PRE ( FILES ${INCLUDE_FILES} DESTINATION ${_inc_path} )
 
-if ( LINUX )
+# pdb & dlls (windows)
+if ( WIN32 )
   install ( FILES $<TARGET_PDB_FILE:${PROJNAME}> DESTINATION ${_bin_path} OPTIONAL )
+  _INSTALL ( FILES ${PACKAGE_DLLS} DESTINATION ${_bin_path} )
 endif()
+
 # output shared library
 install ( FILES $<TARGET_LINKER_FILE:${PROJNAME}> DESTINATION ${_bin_path} )
-_INSTALL ( FILES ${PACKAGE_DLLS} DESTINATION ${_bin_path} )
 install ( TARGETS ${PROJNAME} DESTINATION ${_bin_path} )
 
 #################################

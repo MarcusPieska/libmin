@@ -16,6 +16,15 @@
   #include <netinet/in.h>
 #endif
 
+#ifdef USE_OPENSSL
+	#include <openssl/crypto.h>
+	#include <openssl/pem.h>
+	#include <openssl/err.h>
+	#include <openssl/md5.h>
+	#include <openssl/ssl.h>	
+	#include <openssl/x509v3.h>
+#endif
+
 
 NetworkSystem* net;
 
@@ -29,42 +38,55 @@ NetworkSystem::NetworkSystem ()
 	mbDebugNet = false;
 }
 
-void make_sock_block (int sock) // MP: added for ssl handshake
+void make_sock_block (SOCKET sock)				// MP: added for ssl handshake
 {
+	#ifdef _WIN32
+	  // windows
+		unsigned long block_mode = 1;  // (s.blocking ? 0 : 1);  // 0=blocking, 1=non-blocking
+		ioctlsocket ( sock, FIONBIO, &block_mode);	// FIONBIO = non-blocking mode	
+
+	#else
+	  // linux
     int flags = fcntl(sock, F_GETFL, 0);
     if (flags == -1) {
         perror("get flags failed");
         exit(EXIT_FAILURE);
     } else {
 		std::cout << "Call to get flags succeded" << std::endl;
-	}
     
     flags &= ~O_NONBLOCK;
     if (fcntl(sock, F_SETFL, flags) == -1) {
         perror("set blocking option failed");
         exit(EXIT_FAILURE);
     } else {
-		std::cout << "Call to set blocking succeded" << std::endl;
-	}
+			std::cout << "Call to set blocking succeded" << std::endl;
+		}
+	#endif
 }
 
-void make_sock_non_block (int sock) // MP: added for ssl handshake
+void make_sock_non_block (SOCKET sock)		// MP: added for ssl handshake
 {
+	#ifdef _WIN32
+		// windows
+		unsigned long block_mode = 0;  // (s.blocking ? 0 : 1);  // 0=blocking, 1=non-blocking
+		ioctlsocket ( sock, FIONBIO, &block_mode);	// FIONBIO = non-blocking mode	
+	#else
+		// linux
     int flags = fcntl(sock, F_GETFL, 0);
     if (flags == -1) {
         perror("get flags failed");
         exit(EXIT_FAILURE);
     } else {
-		std::cout << "Call to get flags succeded" << std::endl;
-	}
-	
-    flags |= O_NONBLOCK;
-    if (fcntl(sock, F_SETFL, flags) == -1) {
-        perror("set non-blocking option failed");
-        exit(EXIT_FAILURE);
-    } else {
-		std::cout << "Call to set non-blocking succeded" << std::endl;
-	}
+			std::cout << "Call to get flags succeded" << std::endl;
+		}	
+		flags |= O_NONBLOCK;
+		if (fcntl(sock, F_SETFL, flags) == -1) {
+				perror("set non-blocking option failed");
+				exit(EXIT_FAILURE);
+		} else {
+			std::cout << "Call to set non-blocking succeded" << std::endl;
+		}
+	#endif
 }
 
 //--------------------------------------------------- NETWORK SERVER
@@ -88,15 +110,15 @@ void NetworkSystem::setupServerOpenssl (int sock)
 
 	//SSL_CTX_set_verify(s.ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, NULL); // client needs cert for this ? 
 
-	if ((ret = SSL_CTX_use_certificate_file(sslctx, "/home/w/Downloads/networking-opensll/keys/server.pem" , SSL_FILETYPE_PEM)) <= 0) {
-		perror("use certificate failed");
+	if ((ret = SSL_CTX_use_certificate_file(sslctx, "assets/server.pem" , SSL_FILETYPE_PEM)) <= 0) {
+		netPrintError ( ret, "Use certificate failed" );		
 		exit(EXIT_FAILURE);
 	} else {
 		std::cout << "Call to use certificate succeded" << std::endl;
 	}
 
-	if ((ret = SSL_CTX_use_PrivateKey_file(sslctx, "/home/w/Downloads/networking-opensll/keys/server.key", SSL_FILETYPE_PEM)) <= 0) {
-		perror("use private key failed");
+	if ((ret = SSL_CTX_use_PrivateKey_file(sslctx, "assets/server.key", SSL_FILETYPE_PEM)) <= 0) {
+		netPrintError ( ret, "Use private key failed" );
 		exit(EXIT_FAILURE);
 	} else {
 		std::cout << "Call to use private key succeded" << std::endl;
@@ -214,8 +236,16 @@ void NetworkSystem::setupClientOpenssl (int sock)
 	std::cout << "Setting up OpenSSL (1) on client sock: " << s.socket << std::endl;
 	make_sock_block (s.socket);
 	
-	SSL_load_error_strings();	 
-	OpenSSL_add_ssl_algorithms();
+	// initialize openssl library
+	#if OPENSSL_VERSION_NUMBER < 0x10100000L
+	  // version 1.1
+		SSL_load_error_strings();	 
+		SSL_library_init();
+	#else
+		// version 3.0+
+		OPENSSL_init_ssl( OPENSSL_INIT_LOAD_SSL_STRINGS, NULL );
+	#endif
+
 	int ret, exp;
 	
 	//s.bio = BIO_new_socket(s.socket, BIO_NOCLOSE);
@@ -228,18 +258,23 @@ void NetworkSystem::setupClientOpenssl (int sock)
 	} else {
 		std::cout << "Call to ctx succeded" << std::endl;
 	}
-	
-	exp = SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 | SSL_OP_NO_TLSv1;
-	if (((ret = SSL_CTX_set_options(s.ctx, exp)) & exp) != exp) {
+
+	//----- deprecated as of 1.1.0, use SSL_CTX_set_min_proto_version
+	/* exp = SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 | SSL_OP_NO_TLSv1;
+	if (((ret = SSL_CTX_set_options(s.ctx, exp)) & exp) != exp) {	
 		perror("set ssl option failed");
 		exit(EXIT_FAILURE);
 	} else {
 		std::cout << "Call to set ssl option succeded" << std::endl;
-	}
+	} */
+
+	//-- use TLS 1.2+ only, since we have custom client-server protocols
+	SSL_CTX_set_min_proto_version( s.ctx, TLS1_2_VERSION );
+	SSL_CTX_set_max_proto_version( s.ctx, TLS1_3_VERSION );
 
 	SSL_CTX_set_verify(s.ctx, SSL_VERIFY_PEER, NULL);
 
-	if (!SSL_CTX_load_verify_locations(s.ctx, "/home/w/Downloads/networking-opensll/keys/server.pem", NULL)) {
+	if (!SSL_CTX_load_verify_locations(s.ctx, "assets/server.pem", NULL)) {
 		perror("load verify locations failed");
 		ERR_print_errors_fp(stderr);
 		exit(EXIT_FAILURE);
@@ -616,6 +651,49 @@ void NetworkSystem::netReportError ( int result )
 	e.startRead();
 	(*mUserEventCallback) ( e, this );
 }
+
+
+std::string NetworkSystem::netPrintError ( int ret, std::string msg, SSL* sslsock ) 
+{		 
+	 msg += "\n";
+
+	 // append, error code for socket
+	 if (sslsock != 0x0) { 
+		 int code = SSL_get_error (sslsock, ret );
+		 switch (code)
+		 {
+		 case SSL_ERROR_NONE:					msg = "The TLS/SSL I/O operation completed."; break;
+		 case SSL_ERROR_ZERO_RETURN:  msg = "The TLS/SSL connection has been closed."; break;
+		 case SSL_ERROR_WANT_READ:    msg = "The read operation did not complete; the same TLS/SSL I/O function should be called again later.";    break;
+		 case SSL_ERROR_WANT_WRITE:   msg = "The write operation did not complete; the same TLS/SSL I/O function should be called again later.";     break;
+		 case SSL_ERROR_WANT_CONNECT: msg = "The connect operation did not complete; the same TLS/SSL I/O function should be called again later.";      break;
+		 case SSL_ERROR_WANT_ACCEPT:  msg = "The accept operation did not complete; the same TLS/SSL I/O function should be called again later.";      break;
+		 case SSL_ERROR_WANT_X509_LOOKUP:  msg = "The operation did not complete because an application callback set"
+					" by SSL_CTX_set_client_cert_cb() has asked to be called again. "
+					"The TLS/SSL I/O function should be called again later.";
+					break;
+		 case SSL_ERROR_SYSCALL: msg = "Some I/O error occurred. The OpenSSL error queue is here:";     break;
+		 case SSL_ERROR_SSL:     msg = "A failure in the SSL library occurred, usually a protocol error. The OpenSSL error queue is here:"; break;
+		 default: msg = "Unknown error"; break;
+		 };		 
+		 msg += "\n";
+	 }	 
+
+	 // append, SSL error queue 
+	 char buf[512];
+	 unsigned long err = ERR_get_error();
+	 while ( err != 0 ) {
+		 ERR_error_string ( err, buf );
+		 msg += std::string(buf) + "\n";
+		 err = ERR_get_error();
+	 }	 
+
+	 printf ( "%s\n", msg.c_str() );
+
+	 return msg;
+}
+
+
 
 // Process Queue
 int NetworkSystem::netProcessQueue (void)
