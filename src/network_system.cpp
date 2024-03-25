@@ -17,7 +17,8 @@
 #endif
 
 #ifdef USE_OPENSSL
-	#include <openssl/crypto.h>
+	#include <openssl/opensslv.h>
+  #include <openssl/crypto.h>
 	#include <openssl/pem.h>
 	#include <openssl/err.h>
 	#include <openssl/md5.h>
@@ -99,6 +100,9 @@ void NetworkSystem::setupServerOpenssl (int sock)
     
 	SSL_CTX* sslctx = SSL_CTX_new(TLS_server_method());
 	int ret, exp;
+
+	// openssl version 
+	dbgprintf ( "OpenSSL: %s\n", OPENSSL_VERSION_TEXT );
 
 	exp = SSL_OP_SINGLE_DH_USE;
 	if (((ret = SSL_CTX_set_options(sslctx, exp)) & exp) != exp) {
@@ -245,6 +249,9 @@ void NetworkSystem::setupClientOpenssl (int sock)
 		// version 3.0+
 		OPENSSL_init_ssl( OPENSSL_INIT_LOAD_SSL_STRINGS, NULL );
 	#endif
+
+	// openssl version 
+	dbgprintf ( "OpenSSL: %s\n", OPENSSL_VERSION_TEXT );
 
 	int ret, exp;
 	
