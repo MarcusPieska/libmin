@@ -43,7 +43,7 @@ void make_sock_block (SOCKET sock)				// MP: added for ssl handshake
 {
 	#ifdef _WIN32
 	  // windows
-		unsigned long block_mode = 1;  // (s.blocking ? 0 : 1);  // 0=blocking, 1=non-blocking
+		unsigned long block_mode = 0;								// (s.blocking ? 0 : 1);  // 0=blocking, 1=non-blocking
 		ioctlsocket ( sock, FIONBIO, &block_mode);	// FIONBIO = non-blocking mode	
 
 	#else
@@ -69,7 +69,7 @@ void make_sock_non_block (SOCKET sock)		// MP: added for ssl handshake
 {
 	#ifdef _WIN32
 		// windows
-		unsigned long block_mode = 0;  // (s.blocking ? 0 : 1);  // 0=blocking, 1=non-blocking
+		unsigned long block_mode = 1;								// (s.blocking ? 0 : 1);  // 0=blocking, 1=non-blocking
 		ioctlsocket ( sock, FIONBIO, &block_mode);	// FIONBIO = non-blocking mode	
 	#else
 		// linux
@@ -99,7 +99,9 @@ void NetworkSystem::setupServerOpenssl (int sock)
     std::cout << "Setting up OpenSSL (1) on server sock: " << s.socket << std::endl;
     
 	SSL_CTX* sslctx = SSL_CTX_new(TLS_server_method());
-	int ret, exp;
+	int ret=0, exp;
+
+	make_sock_block (s.socket);
 
 	// openssl version 
 	dbgprintf ( "OpenSSL: %s\n", OPENSSL_VERSION_TEXT );
@@ -137,14 +139,16 @@ void NetworkSystem::setupServerOpenssl (int sock)
 	}
 	   
 	if ((ret = SSL_accept(s.ssl)) <= 0) {
+		netPrintError ( ret, "SSL_accept failed", s.ssl );
 		SSL_shutdown(s.ssl);
-		SSL_free(s.ssl);
-        std::cout << "ssl accept failed" << std::endl;
+		SSL_free(s.ssl);        
 	} else {
 		std::cout << "Call to ssl accept succeded" << std::endl;
 	}
 	
 	s.security++;
+
+	make_sock_non_block (s.socket);
 }
 
 void NetworkSystem::netStartServer ( netPort srv_port )
@@ -235,9 +239,11 @@ void NetworkSystem::netServerListen ( int sock )
 //
 // MP: new, should be called by client after connect
 void NetworkSystem::setupClientOpenssl (int sock) 
-{   
+{ 
+	int ret=0, exp;
 	NetSock& s = mSockets[sock];
 	std::cout << "Setting up OpenSSL (1) on client sock: " << s.socket << std::endl;
+
 	make_sock_block (s.socket);
 	
 	// initialize openssl library
@@ -252,8 +258,6 @@ void NetworkSystem::setupClientOpenssl (int sock)
 
 	// openssl version 
 	dbgprintf ( "OpenSSL: %s\n", OPENSSL_VERSION_TEXT );
-
-	int ret, exp;
 	
 	//s.bio = BIO_new_socket(s.socket, BIO_NOCLOSE);
 	
@@ -305,8 +309,8 @@ void NetworkSystem::setupClientOpenssl (int sock)
 		std::cout << "Call to ssl set fd succeded" << std::endl;
 	}	
 	
-	if (SSL_connect(s.ssl) != 1) {
-		std::cout << "ssl connect failed" << std::endl;
+	if ( (ret = SSL_connect(s.ssl)) != 1) {
+		netPrintError ( ret, "SSL_connect failed", s.ssl );		
 	} else {
 		std::cout << "Call to ssl connect succeded" << std::endl;
 	}  
@@ -662,38 +666,42 @@ void NetworkSystem::netReportError ( int result )
 
 std::string NetworkSystem::netPrintError ( int ret, std::string msg, SSL* sslsock ) 
 {		 
-	 msg += "\n";
+	 msg = "ERROR: " + msg + "\n ";
 
 	 // append, error code for socket
 	 if (sslsock != 0x0) { 
 		 int code = SSL_get_error (sslsock, ret );
 		 switch (code)
 		 {
-		 case SSL_ERROR_NONE:					msg = "The TLS/SSL I/O operation completed."; break;
-		 case SSL_ERROR_ZERO_RETURN:  msg = "The TLS/SSL connection has been closed."; break;
-		 case SSL_ERROR_WANT_READ:    msg = "The read operation did not complete; the same TLS/SSL I/O function should be called again later.";    break;
-		 case SSL_ERROR_WANT_WRITE:   msg = "The write operation did not complete; the same TLS/SSL I/O function should be called again later.";     break;
-		 case SSL_ERROR_WANT_CONNECT: msg = "The connect operation did not complete; the same TLS/SSL I/O function should be called again later.";      break;
-		 case SSL_ERROR_WANT_ACCEPT:  msg = "The accept operation did not complete; the same TLS/SSL I/O function should be called again later.";      break;
-		 case SSL_ERROR_WANT_X509_LOOKUP:  msg = "The operation did not complete because an application callback set"
+		 case SSL_ERROR_NONE:					msg += "The TLS/SSL I/O operation completed."; break;
+		 case SSL_ERROR_ZERO_RETURN:  msg += "The TLS/SSL connection has been closed."; break;
+		 case SSL_ERROR_WANT_READ:    msg += "The read operation did not complete; the same TLS/SSL I/O function should be called again later.";    break;
+		 case SSL_ERROR_WANT_WRITE:   msg += "The write operation did not complete; the same TLS/SSL I/O function should be called again later.";     break;
+		 case SSL_ERROR_WANT_CONNECT: msg += "The connect operation did not complete; the same TLS/SSL I/O function should be called again later.";      break;
+		 case SSL_ERROR_WANT_ACCEPT:  msg += "The accept operation did not complete; the same TLS/SSL I/O function should be called again later.";      break;
+		 case SSL_ERROR_WANT_X509_LOOKUP:  msg += "The operation did not complete because an application callback set"
 					" by SSL_CTX_set_client_cert_cb() has asked to be called again. "
 					"The TLS/SSL I/O function should be called again later.";
 					break;
-		 case SSL_ERROR_SYSCALL: msg = "Some I/O error occurred. The OpenSSL error queue is here:";     break;
-		 case SSL_ERROR_SSL:     msg = "A failure in the SSL library occurred, usually a protocol error. The OpenSSL error queue is here:"; break;
+		 case SSL_ERROR_SYSCALL: msg += "Some I/O error occurred. The OpenSSL error queue is here:";     break;
+		 case SSL_ERROR_SSL:     msg += "A failure in the SSL library occurred, usually a protocol error. The OpenSSL error queue is here:"; break;
 		 default: msg = "Unknown error"; break;
 		 };		 
-		 msg += "\n";
+		 msg += "\n ";
 	 }	 
 
 	 // append, SSL error queue 
 	 char buf[512];
 	 unsigned long err = ERR_get_error();
-	 while ( err != 0 ) {
-		 ERR_error_string ( err, buf );
-		 msg += std::string(buf) + "\n";
-		 err = ERR_get_error();
-	 }	 
+	 if (err==0) {
+		 msg += "No additional SSL error info.\n";
+	 } else {
+		 while ( err != 0 ) {
+			 ERR_error_string ( err, buf );
+			 msg += std::string(buf) + "\n ";
+			 err = ERR_get_error();
+		 }	 
+	 }
 
 	 printf ( "%s\n", msg.c_str() );
 
