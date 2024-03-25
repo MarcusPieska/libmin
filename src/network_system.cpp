@@ -54,7 +54,7 @@ void make_sock_block (SOCKET sock)				// MP: added for ssl handshake
         exit(EXIT_FAILURE);
     } else {
 		std::cout << "Call to get flags succeded" << std::endl;
-    
+    }
     flags &= ~O_NONBLOCK;
     if (fcntl(sock, F_SETFL, flags) == -1) {
         perror("set blocking option failed");
@@ -116,14 +116,27 @@ void NetworkSystem::setupServerOpenssl (int sock)
 
 	//SSL_CTX_set_verify(s.ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, NULL); // client needs cert for this ? 
 
-	if ((ret = SSL_CTX_use_certificate_file(sslctx, "assets/server.pem" , SSL_FILETYPE_PEM)) <= 0) {
+        // dbgprintf ( "  Cert file path: %s\n", ASSET_PATH );
+
+        // NOTE: For not the /assets path is hardcoded because libmin cannot know the 
+        // assets folder of the final app (eg. netdemo). This means the app must be
+        // run from the same working directory as the binary.
+        // Will be fixed once we have a netSetCertPath API function and let the app tell us.
+
+
+	char fpath[2048];
+        sprintf ( fpath, "assets/server.pem" );
+
+	if ((ret = SSL_CTX_use_certificate_file(sslctx, fpath, SSL_FILETYPE_PEM)) <= 0) {
 		netPrintError ( ret, "Use certificate failed" );		
 		exit(EXIT_FAILURE);
 	} else {
 		std::cout << "Call to use certificate succeded" << std::endl;
 	}
 
-	if ((ret = SSL_CTX_use_PrivateKey_file(sslctx, "assets/server.key", SSL_FILETYPE_PEM)) <= 0) {
+        sprintf ( fpath, "assets/server.key" );
+
+	if ((ret = SSL_CTX_use_PrivateKey_file(sslctx, fpath, SSL_FILETYPE_PEM)) <= 0) {
 		netPrintError ( ret, "Use private key failed" );
 		exit(EXIT_FAILURE);
 	} else {
