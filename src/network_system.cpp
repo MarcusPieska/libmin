@@ -114,18 +114,30 @@ void NetworkSystem::setupServerOpenssl (int sock)
 		std::cout << "Call to set ssl option succeded" << std::endl;
 	}
 
-	//SSL_CTX_set_verify(s.ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, NULL); // client needs cert for this ? 
+	// specify CA veryify locations for trusted certs
+	if ((ret = SSL_CTX_set_default_verify_paths( sslctx )) <= 0 ) {
+		netPrintError ( ret, "Default verify paths failed" );
+	} else {
+		std::cout << "Call to default verify paths succeded" << std::endl;
+	}
+	if ((ret = SSL_CTX_load_verify_locations ( sslctx, "/etc/ssl/certs/ca-certificates.crt", "/etc/ssl/certs" )) <= 0) {
+		netPrintError ( ret, "Load verify locations failed" );
+	} else {
+		std::cout << "Call to load verify locations succeded" << std::endl;
+	}
 
-        // dbgprintf ( "  Cert file path: %s\n", ASSET_PATH );
+	SSL_CTX_set_verify(s.ctx, SSL_VERIFY_PEER, NULL);
 
-        // NOTE: For not the /assets path is hardcoded because libmin cannot know the 
-        // assets folder of the final app (eg. netdemo). This means the app must be
-        // run from the same working directory as the binary.
-        // Will be fixed once we have a netSetCertPath API function and let the app tell us.
+  // dbgprintf ( "  Cert file path: %s\n", ASSET_PATH );
 
+  // NOTE: For not the /assets path is hardcoded because libmin cannot know the 
+  // assets folder of the final app (eg. netdemo). This means the app must be
+  // run from the same working directory as the binary.
+  // Will be fixed once we have a netSetCertPath API function and let the app tell us.
 
+	// load server public & private keys
 	char fpath[2048];
-        sprintf ( fpath, "assets/server.pem" );
+  sprintf ( fpath, "assets/server.pem" );
 
 	if ((ret = SSL_CTX_use_certificate_file(sslctx, fpath, SSL_FILETYPE_PEM)) <= 0) {
 		netPrintError ( ret, "Use certificate failed" );		
@@ -134,7 +146,7 @@ void NetworkSystem::setupServerOpenssl (int sock)
 		std::cout << "Call to use certificate succeded" << std::endl;
 	}
 
-        sprintf ( fpath, "assets/server.key" );
+  sprintf ( fpath, "assets/server.key" );
 
 	if ((ret = SSL_CTX_use_PrivateKey_file(sslctx, fpath, SSL_FILETYPE_PEM)) <= 0) {
 		netPrintError ( ret, "Use private key failed" );
@@ -187,9 +199,13 @@ void NetworkSystem::netStartServer ( netPort srv_port )
 void NetworkSystem::netServerListen ( int sock )
 {
 	int srv_sock_svc = netFindSocket ( NET_SRV, NET_TCP, NET_ANY );
-	NetSock srv = getSock(srv_sock_svc);
-	std::string srv_name = srv.src.name;
-	netPort srv_port = srv.src.port;
+        if (srv_sock_svc==-1) {
+           netPrintError ( 0, "Unable to find server listen socket.\n" );
+        }
+
+	// get server name & port;
+	std::string srv_name = mSockets[ srv_sock_svc ].src.name;
+	netPort srv_port = mSockets[ srv_sock_svc ].src.port;
 
 	netIP cli_ip = 0;
 	netPort cli_port = 0;
