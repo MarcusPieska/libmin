@@ -130,7 +130,7 @@ void NetworkSystem::setupServerOpenssl (int sock)
 
   // dbgprintf ( "  Cert file path: %s\n", ASSET_PATH );
 
-  // NOTE: For not the /assets path is hardcoded because libmin cannot know the 
+  // NOTE: For now the /assets path is hardcoded because libmin cannot know the 
   // assets folder of the final app (eg. netdemo). This means the app must be
   // run from the same working directory as the binary.
   // Will be fixed once we have a netSetCertPath API function and let the app tell us.
