@@ -84,11 +84,11 @@
 		std::string netPrintAddr ( NetAddr adr );
 
 		// Server - Network API
-		void netStartServer ( netPort srv_port);
+		void netStartServer ( netPort srv_port );
 		void netServerListen ( int sock );
 
 		// Client - Network API
-		void netStartClient ( netPort srv_port);
+		void netStartClient ( netPort srv_port, std::string srv_addr="127.0.0.1" );
 		int  netClientConnectToServer ( std::string srv_name, netPort srv_port, bool blocking = false );
 		int  netCloseConnection ( int localsock );
 		int  netCloseAll ();

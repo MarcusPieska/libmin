@@ -353,7 +353,7 @@ void NetworkSystem::setupClientOpenssl (int sock)
 	s.security++;	
 }
 
-void NetworkSystem::netStartClient ( netPort cli_port )
+void NetworkSystem::netStartClient ( netPort cli_port, std::string srv_addr )
 {
 	// Network System is running in client mode
 	eventStr_t sys = 'net ';
@@ -361,8 +361,11 @@ void NetworkSystem::netStartClient ( netPort cli_port )
 	if (mbVerbose) dbgprintf ( "Start Client:\n");
 
 	// Start a TCP listen socket on Client
+	struct HELPAPI NetAddr netAddr = NetAddr();
+	netAddr.convertIP ( ntohl( inet_addr( srv_addr.c_str() ) ) );
+	netAddr.ipL = inet_addr( srv_addr.c_str() );
 	netAddSocket ( NET_CLI, NET_TCP, NET_OFF, false, 
-					NetAddr(NET_ANY, mHostName, mHostIP, cli_port), NetAddr() );
+					NetAddr(NET_ANY, mHostName, mHostIP, cli_port), netAddr );
 }
 
 int NetworkSystem::netClientConnectToServer(std::string srv_name, netPort srv_port, bool blocking )
