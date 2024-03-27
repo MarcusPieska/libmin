@@ -128,6 +128,7 @@
 		int netSocketRecv ( int sock, char* buf, int buflen, int& recvlen); // low-level recv()
 		bool netIsError ( int result );			// socket-specific error check
 		void netReportError ( int result );
+		std::string netPrintError ( int ret, std::string msg, SSL* sslsock=0x0 );
 		int	netGetServerSocket ( int sock )	{ return (sock >= mSockets.size()) ? -1 : mSockets[sock].dest.sock; }
 
 		bool netIsQueueEmpty() { return (mEventQueue.size()==0); }
@@ -142,6 +143,7 @@
 		EventPool*  getPool()						{ return mEventPool; }
 
 	public:
+		int checkOpensslError( int sock, int ret );
 	    void setupServerOpenssl( int sock ); // MP: new
 		void setupClientOpenssl( int sock ); // MP: new
 	
@@ -174,13 +176,13 @@
 		bool						mbDebugNet;
 		bool						mbVerbose;
 
-        #ifdef _WIN32
-            struct fd_set			sock_set;
-        #elif __ANDROID__
-            fd_set				    sock_set;
-        #elif __linux__
-            fd_set				    sock_set;
-        #endif
+    #ifdef _WIN32
+        struct fd_set			sock_set;
+    #elif __ANDROID__
+        fd_set				    sock_set;
+    #elif __linux__
+        fd_set				    sock_set;
+    #endif
 	};
 
 	extern NetworkSystem* net;
