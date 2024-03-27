@@ -98,82 +98,84 @@ void NetworkSystem::setupServerOpenssl (int sock)
 	NetSock& s = mSockets[sock];
     std::cout << "Setting up OpenSSL (1) on server sock: " << s.socket << std::endl;
     
-	SSL_CTX* sslctx = SSL_CTX_new(TLS_server_method());
+	SSL_CTX* sslctx = SSL_CTX_new( TLS_server_method() );
 	int ret=0, exp;
 
-	make_sock_block (s.socket);
+	make_sock_non_block( s.socket ); // MP: From what I can tell, socket is already non-blocking
 
 	// openssl version 
-	dbgprintf ( "OpenSSL: %s\n", OPENSSL_VERSION_TEXT );
+	dbgprintf( "OpenSSL: %s\n", OPENSSL_VERSION_TEXT );
 
 	exp = SSL_OP_SINGLE_DH_USE;
-	if (((ret = SSL_CTX_set_options(sslctx, exp)) & exp) != exp) {
-		perror("set ssl option failed");
-		exit(EXIT_FAILURE);
+	if (((ret = SSL_CTX_set_options( sslctx, exp )) & exp) != exp) {
+		perror( "set ssl option failed" );
+		exit( EXIT_FAILURE );
 	} else {
 		std::cout << "Call to set ssl option succeded" << std::endl;
 	}
 
 	// specify CA veryify locations for trusted certs
 	if ((ret = SSL_CTX_set_default_verify_paths( sslctx )) <= 0 ) {
-		netPrintError ( ret, "Default verify paths failed" );
+		netPrintError( ret, "Default verify paths failed" );
 	} else {
 		std::cout << "Call to default verify paths succeded" << std::endl;
 	}
-	if ((ret = SSL_CTX_load_verify_locations ( sslctx, "/etc/ssl/certs/ca-certificates.crt", "/etc/ssl/certs" )) <= 0) {
-		netPrintError ( ret, "Load verify locations failed" );
+	if ((ret = SSL_CTX_load_verify_locations( sslctx, "/etc/ssl/certs/ca-certificates.crt", "/etc/ssl/certs" )) <= 0) {
+		netPrintError( ret, "Load verify locations failed" );
 	} else {
 		std::cout << "Call to load verify locations succeded" << std::endl;
 	}
 
-	SSL_CTX_set_verify(s.ctx, SSL_VERIFY_PEER, NULL);
+	SSL_CTX_set_verify( s.ctx, SSL_VERIFY_PEER, NULL );
 
-  // dbgprintf ( "  Cert file path: %s\n", ASSET_PATH );
+	// dbgprintf ( "  Cert file path: %s\n", ASSET_PATH );
 
-  // NOTE: For now the /assets path is hardcoded because libmin cannot know the 
-  // assets folder of the final app (eg. netdemo). This means the app must be
-  // run from the same working directory as the binary.
-  // Will be fixed once we have a netSetCertPath API function and let the app tell us.
+	// NOTE: For now the /assets path is hardcoded because libmin cannot know the 
+	// assets folder of the final app (eg. netdemo). This means the app must be
+	// run from the same working directory as the binary.
+	// Will be fixed once we have a netSetCertPath API function and let the app tell us.
 
 	// load server public & private keys
 	char fpath[2048];
 	sprintf ( fpath, "src/assets/server.pem" );
 
-	if ((ret = SSL_CTX_use_certificate_file(sslctx, fpath, SSL_FILETYPE_PEM)) <= 0) {
-		netPrintError ( ret, "Use certificate failed" );		
-		exit(EXIT_FAILURE);
+	if ((ret = SSL_CTX_use_certificate_file( sslctx, fpath, SSL_FILETYPE_PEM )) <= 0) {
+		netPrintError( ret, "Use certificate failed" );		
+		exit( EXIT_FAILURE );
 	} else {
 		std::cout << "Call to use certificate succeded" << std::endl;
 	}
 
 	sprintf ( fpath, "src/assets/server.key" );
 
-	if ((ret = SSL_CTX_use_PrivateKey_file(sslctx, fpath, SSL_FILETYPE_PEM)) <= 0) {
-		netPrintError ( ret, "Use private key failed" );
-		exit(EXIT_FAILURE);
+	if ((ret = SSL_CTX_use_PrivateKey_file( sslctx, fpath, SSL_FILETYPE_PEM )) <= 0) {
+		netPrintError( ret, "Use private key failed" );
+		exit( EXIT_FAILURE );
 	} else {
 		std::cout << "Call to use private key succeded" << std::endl;
 	}
 
-	s.ssl = SSL_new(sslctx);
-	if (SSL_set_fd(s.ssl, s.socket) <= 0) {
-		perror("set ssl fd failed");
-		exit(EXIT_FAILURE);
+	s.ssl = SSL_new( sslctx );
+	if (SSL_set_fd( s.ssl, s.socket ) <= 0) {
+		perror( "set ssl fd failed" );
+		exit( EXIT_FAILURE );
 	} else {
 		std::cout << "Call to set ssl fd succeded" << std::endl;
 	}
 	   
-	if ((ret = SSL_accept(s.ssl)) <= 0) {
-		netPrintError ( ret, "SSL_accept failed", s.ssl );
-		SSL_shutdown(s.ssl);
-		SSL_free(s.ssl);        
+	if ((ret = SSL_accept( s.ssl )) <= 0) {
+		if (checkOpensslError( sock, ret )) {
+			std::cout << "Non-blocking call to ssl accept tentatively succeded" << std::endl;
+		} else {	
+			netPrintError( ret, "SSL_accept failed", s.ssl );
+			SSL_shutdown( s.ssl );
+			SSL_free( s.ssl );     
+		}   
 	} else {
 		std::cout << "Call to ssl accept succeded" << std::endl;
 	}
 	
 	s.security++;
-
-	make_sock_non_block (s.socket);
 }
 
 void NetworkSystem::netStartServer ( netPort srv_port )
@@ -272,8 +274,8 @@ void NetworkSystem::setupClientOpenssl (int sock)
 	int ret=0, exp;
 	NetSock& s = mSockets[sock];
 	std::cout << "Setting up OpenSSL (1) on client sock: " << s.socket << std::endl;
-
-	// make_sock_block (s.socket);
+	
+	make_sock_non_block( s.socket ); // MP: From what I can tell, socket is already non-blocking
 	
 	// initialize openssl library
 	#if OPENSSL_VERSION_NUMBER < 0x10100000L
@@ -347,9 +349,8 @@ void NetworkSystem::setupClientOpenssl (int sock)
 	} else {
 		std::cout << "Call to ssl connect succeded" << std::endl;
 	}  
+	
 	s.security++;	
-
-	// make_sock_non_block (s.socket); // MP: this should not happen if app selected blocking, checks needed
 }
 
 void NetworkSystem::netStartClient ( netPort cli_port )
