@@ -11,6 +11,7 @@ The functionality in Libmin includes:
 - Quaternions (quaternion.h)
 - Stateful Mersenee Twister RNG (mersenne.h)
 - Event system (event.h, event_system.h)
+- Network system, real-time non-blocking, event-based (network_system.h)
 - Drawing in 2D/3D in OpenGL core profile (gxlib)
 - 2D GUI Interface library (g2lib)
 - Smart memory pointers for CPU/GPU via OpenGL/CUDA (dataptr.h)
@@ -27,6 +28,13 @@ To see some example uses of Libmin, check out the Just Math repository:<br>
 Just math - <a href="https://github.com/ramakarl/just_math">https://github.com/ramakarl/just_math</a><br>
 All samples there make use of Libmin.<br>
 
+## Building
+
+Steps:
+1) git clone https://github.com/ramakarl/libmin.git
+2) Run ./build.sh
+3) For more details/options, see <a href="https://github.com/ramakarl/just_math?tab=readme-ov-file#how-to-build">just_math, How to Build</a>
+
 ## Mains
 
 Libmin provides main wrappers for multiple platforms including Windows, Linux and Android.<br>
@@ -39,7 +47,65 @@ Third party libs may be found in \libext.
 
 These are not built into libmin.<br>
 They are provided for convenience to applications that use libmin.<br>
-For example, the _REQUIRED_JPG() cmake function allows an application to request linkage to libjpg dynamic libs. <br>
+<Br>
+Convenience functions (called in application CMake):
+- _REQUIRE_MAIN - request linkage to interactive cross-platform main
+- _REQUIRE_GL - request linkage to OpenGL lib
+- _REQUIRE_GLEW - request linkage to GLEW lib
+- _REQUIRE_LIBEXT - request linkage to third-party libs, enables LIBEXT
+- _REQUIRE_JPG - request linkage to libjpg 
+- _REQUIRE_OPENSSL(default) - request linkage to libssl-dev
+- _REQUIRE_BCRYPT(default) - request linkage to bcrypt
+- _REQUIRE_CUDA(default) - request linkage to NV CUDA
+
+## Application Cmakes 
+Libmin was designed to be a very versatile library, providing application wrappers from interactive OpenGL apps, to GPU-based CUDA apps, to console-based networking apps.<br>
+To achieve this, an application that uses libmin creates a CMakeLists.txt following this pseudo-code.<br>
+For a detailed example see: https://github.com/ramakarl/Flock2/blob/main/CMakeLists.txt<br>
+
+```
+cmake_minimum_required(VERSION 2.8)
+set (CMAKE_INSTALL_PREFIX ${CMAKE_CURRENT_BINARY_DIR} CACHE PATH "")
+set(PROJNAME _your_project_name_)
+Project(${PROJNAME})
+
+# LIBMIN Bootstrap - this section finds the libmin/cmakes
+#
+..
+# Include LIBMIN - this section loads and links with libmin
+#
+find_package( Libmin QUIET )
+..
+# Options - this section specifies the linkage that the application desires
+#
+_REQUIRE_MAIN()  - optional (leave out for console apps)
+_REQUIRE_GL()    - optional
+_REQUIRE_GLEW()  - optional
+_REQUIRE_CUDA(bool, ".")  - optional, for GPU-based apps
+_REQUIRE_LIBEXT() - optional, load and link with additional 3rd party libs
+_REQUIRE_OPENSSL(bool) - optional, links with openssl (from libext)
+_REQUIRE_BCRYPT(bool) - optional, links with bcrypt (from libext)
+..
+# Asset Path - this section provides an ASSET_PATH variable to the 'assets' folder during compile
+#
+..
+# App Code & Executable - this section finds the user-application cpp/h files
+#
+file( GLOB MAIN_FILES *.cpp *.c *.h )
+..add_executable (..)
+..
+# Link Additional Libraries - this section links with all required & optional libs
+#
+_LINK ( PROJECT ${PROJNAME} OPT ${LIBRARIES_OPTIMIZED} DEBUG ${LIBRARIES_DEBUG} PLATFORM ${PLATFORM_LIBRARIES} )
+..
+# Install Binaries - this section builds the install, with dlls, shaders, ptx, exe & include as needed
+#
+file (COPY ..) - for assets folder
+_INSTALL (FILES ${SHADERS} .. ) - for shaders
+_INSTALL (FILES ${PACKAGE_DLLS} .. ) - for libext/libmin dlls
+install (FILES $<TARGET_PDB_FILE:$PROJNAME}) .. ) -for pdb debug symbols
+install (FIELS ${INSTALL_LIST} .. ) - for executable
+```
 
 ## License
 
