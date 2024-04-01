@@ -39,6 +39,15 @@ NetworkSystem::NetworkSystem ()
 	mbDebugNet = false;
 }
 
+int getReadReadyBytes ( int socket_fd ) {
+    int bytesAvailable;
+    if ( ioctl ( socket_fd, FIONREAD, &bytesAvailable ) == -1 ) {
+        perror ( "ioctl FIONREAD" );
+        return -1; // Return -1 on error
+    }
+    return bytesAvailable; // Return the number of bytes ready to be read
+}
+
 void make_sock_block (SOCKET sock)				// MP: added for ssl handshake
 {
 	#ifdef _WIN32
@@ -93,40 +102,36 @@ void make_sock_non_block (SOCKET sock)		// MP: added for ssl handshake
 //--------------------------------------------------- NETWORK SERVER
 //
 // MP: new, should be called by server after accept
-void NetworkSystem::setupServerOpenssl (int sock) 
+int NetworkSystem::setupServerOpenssl (int sock) 
 {
 	NetSock& s = mSockets[sock];
-    std::cout << "Setting up OpenSSL (1) on server sock: " << s.socket << std::endl;
-    
-	SSL_CTX* sslctx = SSL_CTX_new( TLS_server_method() );
-	int ret=0, exp;
-
-	make_sock_non_block( s.socket ); // MP: From what I can tell, socket is already non-blocking
-
-	// openssl version 
-	dbgprintf( "OpenSSL: %s\n", OPENSSL_VERSION_TEXT );
+	SSL_CTX* sslctx = SSL_CTX_new ( TLS_server_method() );
+	int ret = 0, exp;
+	make_sock_non_block ( s.socket ); // MP: From what I can tell, socket is already non-blocking
+	//make_sock_block ( s.socket ); 
+	dbgprintf ( "OpenSSL: %s\n", OPENSSL_VERSION_TEXT ); // openssl version 
 
 	exp = SSL_OP_SINGLE_DH_USE;
 	if (((ret = SSL_CTX_set_options( sslctx, exp )) & exp) != exp) {
 		perror( "set ssl option failed" );
-		exit( EXIT_FAILURE );
+		return 0;
 	} else {
 		std::cout << "Call to set ssl option succeded" << std::endl;
 	}
 
 	// specify CA veryify locations for trusted certs
-	if ((ret = SSL_CTX_set_default_verify_paths( sslctx )) <= 0 ) {
+	if ((ret = SSL_CTX_set_default_verify_paths ( sslctx )) <= 0 ) {
 		netPrintError( ret, "Default verify paths failed" );
 	} else {
 		std::cout << "Call to default verify paths succeded" << std::endl;
 	}
-	if ((ret = SSL_CTX_load_verify_locations( sslctx, "/etc/ssl/certs/ca-certificates.crt", "/etc/ssl/certs" )) <= 0) {
-		netPrintError( ret, "Load verify locations failed" );
+	if ((ret = SSL_CTX_load_verify_locations ( sslctx, "/etc/ssl/certs/ca-certificates.crt", "/etc/ssl/certs" )) <= 0) {
+		netPrintError ( ret, "Load verify locations failed" );
 	} else {
 		std::cout << "Call to load verify locations succeded" << std::endl;
 	}
 
-	SSL_CTX_set_verify( s.ctx, SSL_VERIFY_PEER, NULL );
+	SSL_CTX_set_verify ( s.ctx, SSL_VERIFY_PEER, NULL );
 
 	// dbgprintf ( "  Cert file path: %s\n", ASSET_PATH );
 
@@ -139,43 +144,53 @@ void NetworkSystem::setupServerOpenssl (int sock)
 	char fpath[2048];
 	sprintf ( fpath, "src/assets/server.pem" );
 
-	if ((ret = SSL_CTX_use_certificate_file( sslctx, fpath, SSL_FILETYPE_PEM )) <= 0) {
-		netPrintError( ret, "Use certificate failed" );		
-		exit( EXIT_FAILURE );
+	if ((ret = SSL_CTX_use_certificate_file ( sslctx, fpath, SSL_FILETYPE_PEM )) <= 0) {
+		netPrintError ( ret, "Use certificate failed" );		
+		return 0;
 	} else {
 		std::cout << "Call to use certificate succeded" << std::endl;
 	}
 
 	sprintf ( fpath, "src/assets/server.key" );
 
-	if ((ret = SSL_CTX_use_PrivateKey_file( sslctx, fpath, SSL_FILETYPE_PEM )) <= 0) {
-		netPrintError( ret, "Use private key failed" );
-		exit( EXIT_FAILURE );
+	if ((ret = SSL_CTX_use_PrivateKey_file ( sslctx, fpath, SSL_FILETYPE_PEM )) <= 0) {
+		netPrintError ( ret, "Use private key failed" );
+		return 0;
 	} else {
 		std::cout << "Call to use private key succeded" << std::endl;
 	}
 
-	s.ssl = SSL_new( sslctx );
-	if (SSL_set_fd( s.ssl, s.socket ) <= 0) {
+	s.ssl = SSL_new ( sslctx );
+	if (SSL_set_fd ( s.ssl, s.socket ) <= 0) {
 		perror( "set ssl fd failed" );
-		exit( EXIT_FAILURE );
+		return 0;
 	} else {
 		std::cout << "Call to set ssl fd succeded" << std::endl;
 	}
+	
+	return acceptServerOpenssl (sock);
+}
 	   
-	if ((ret = SSL_accept( s.ssl )) <= 0) {
-		if (checkOpensslError( sock, ret )) {
-			std::cout << "Non-blocking call to ssl accept tentatively succeded" << std::endl;
+	   
+int NetworkSystem::acceptServerOpenssl (int sock) 
+{ 
+    NetSock& s = mSockets[sock];	   
+	int ret;
+	if ( ( ret = SSL_accept ( s.ssl ) ) <= 0 ) {
+		if ( checkOpensslError ( sock, ret ) ) {
+			std::cout << "Non-blocking call to ssl accept returned" << std::endl;
+			return 2;
 		} else {	
-			netPrintError( ret, "SSL_accept failed", s.ssl );
-			SSL_shutdown( s.ssl );
-			SSL_free( s.ssl );     
+			netPrintError ( ret, "SSL_accept failed", s.ssl );
+			SSL_shutdown ( s.ssl );
+			SSL_free ( s.ssl );  
+			return 0;   
 		}   
 	} else {
 		std::cout << "Call to ssl accept succeded" << std::endl;
 	}
 	
-	s.security++;
+	return 3;
 }
 
 void NetworkSystem::netStartServer ( netPort srv_port )
@@ -201,9 +216,9 @@ void NetworkSystem::netStartServer ( netPort srv_port )
 void NetworkSystem::netServerListen ( int sock )
 {
 	int srv_sock_svc = netFindSocket ( NET_SRV, NET_TCP, NET_ANY );
-        if (srv_sock_svc==-1) {
-           netPrintError ( 0, "Unable to find server listen socket.\n" );
-        }
+	if ( srv_sock_svc == -1 ) {
+		netPrintError ( 0, "Unable to find server listen socket.\n" );
+	}
 
 	// get server name & port;
 	std::string srv_name = mSockets[ srv_sock_svc ].src.name;
@@ -236,31 +251,44 @@ void NetworkSystem::netServerListen ( int sock )
 	s.dest.ipL = cli_ip;		// assign client IP
 	s.dest.port = cli_port;		// assign client port
 	s.status = NET_CONNECTED;	// connected
+	if ( s.security == 1 ) { // MP: this should be the right spot; setup ssl if security is larger than zero
+		s.security = setupServerOpenssl( srv_sock_tcp );
+	}
+	if ( s.security == 3 ) {
+		netServerListenReturnSig ( sock );
+	} 
+} 
+	
+void NetworkSystem::netServerListenReturnSig ( int sock )
+{
+	int srv_sock_svc = netFindSocket ( NET_SRV, NET_TCP, NET_ANY );
+	if ( srv_sock_svc == -1 ) {
+	   netPrintError ( 0, "Unable to find server listen socket.\n" );
+	}
+
+	netPort srv_port = mSockets[ srv_sock_svc ].src.port;
+	
+	NetSock& s = mSockets[sock];
 
 	// Send TCP connected event to client
 	Event e;
 	e = netMakeEvent ( 'sOkT', 0 );
-	e.attachInt64 ( cli_ip );			// client IP
-	e.attachInt64 ( cli_port );			// client port assigned by server!
-	e.attachInt64 ( srv_ip );			// server IP
+	e.attachInt64 ( s.dest.ipL );			// client IP
+	e.attachInt64 ( s.dest.port );			// client port assigned by server!
+	e.attachInt64 ( mHostIP );			// server IP
 	e.attachInt64 ( srv_port );			// server port
-	e.attachInt ( srv_sock_tcp );		// connection ID (goes back to the client)
-	netSend ( e, NET_CONNECT, srv_sock_tcp );
-
-	// MP: this should be the right spot; setup ssl if security is larger than zero
-	if ( s.security == 1 ) {
-		setupServerOpenssl( srv_sock_tcp );
-	}
+	e.attachInt ( sock );		// connection ID (goes back to the client)
+	netSend ( e, NET_CONNECT, sock );
 
 	// Inform the user-app (server) of the event
 	Event ue = new_event ( 120, 'app ', 'sOkT', 0, mEventPool );	
-	ue.attachInt ( srv_sock_tcp );
+	ue.attachInt ( sock );
 	ue.attachInt ( -1 );										// cli_sock not known
 	ue.startRead ();
 	(*mUserEventCallback) ( ue, this );		// send to application
 
-	if (mbVerbose) {
-		dbgprintf("  %s %s: Accepted ip %s, port %i on port %d\n", (s.side == NET_CLI) ? "Client" : "Server", getIPStr(srv_ip).c_str(), getIPStr(s.dest.ipL).c_str(), s.dest.port, s.src.port);
+	if ( mbVerbose ) {
+		dbgprintf ( "  %s %s: Accepted ip %s, port %i on port %d\n", (s.side == NET_CLI) ? "Client" : "Server", getIPStr(mHostIP).c_str(), getIPStr(s.dest.ipL).c_str(), s.dest.port, s.src.port );
 		netPrint();
 	}
 }
@@ -269,22 +297,19 @@ void NetworkSystem::netServerListen ( int sock )
 //----------------------------------------------------------- NETWORK CLIENT
 //
 // MP: new, should be called by client after connect
-void NetworkSystem::setupClientOpenssl (int sock) 
+int NetworkSystem::setupClientOpenssl (int sock) 
 { 
 	int ret=0, exp;
 	NetSock& s = mSockets[sock];
-	std::cout << "Setting up OpenSSL (1) on client sock: " << s.socket << std::endl;
-	
 	make_sock_non_block( s.socket ); // MP: From what I can tell, socket is already non-blocking
-	
-	// initialize openssl library
+	//make_sock_block( s.socket ); 
 	#if OPENSSL_VERSION_NUMBER < 0x10100000L
 	  // version 1.1
 		SSL_load_error_strings();	 
 		SSL_library_init();
 	#else
 		// version 3.0+
-		OPENSSL_init_ssl( OPENSSL_INIT_LOAD_SSL_STRINGS, NULL );
+		OPENSSL_init_ssl ( OPENSSL_INIT_LOAD_SSL_STRINGS, NULL );
 	#endif
 
 	// openssl version 
@@ -292,11 +317,11 @@ void NetworkSystem::setupClientOpenssl (int sock)
 	
 	//s.bio = BIO_new_socket(s.socket, BIO_NOCLOSE);
 	
-	s.ctx = SSL_CTX_new(TLS_client_method());
+	s.ctx = SSL_CTX_new ( TLS_client_method() );
 	if (!s.ctx) {
-		perror("ctx failed");
-		ERR_print_errors_fp(stderr);
-		exit(EXIT_FAILURE);
+		perror ( "ctx failed" );
+		ERR_print_errors_fp ( stderr );
+		return 0;
 	} else {
 		std::cout << "Call to ctx succeded" << std::endl;
 	}
@@ -305,7 +330,7 @@ void NetworkSystem::setupClientOpenssl (int sock)
 	/* exp = SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 | SSL_OP_NO_TLSv1;
 	if (((ret = SSL_CTX_set_options(s.ctx, exp)) & exp) != exp) {	
 		perror("set ssl option failed");
-		exit(EXIT_FAILURE);
+		return 0;
 	} else {
 		std::cout << "Call to set ssl option succeded" << std::endl;
 	} */
@@ -317,25 +342,25 @@ void NetworkSystem::setupClientOpenssl (int sock)
 	SSL_CTX_set_verify(s.ctx, SSL_VERIFY_PEER, NULL);
 
 	if (!SSL_CTX_load_verify_locations(s.ctx, "src/assets/server.pem", NULL)) {
-		perror("load verify locations failed");
-		ERR_print_errors_fp(stderr);
-		exit(EXIT_FAILURE);
+		perror ( "load verify locations failed" );
+		ERR_print_errors_fp ( stderr );
+		return 0;
 	} else {
 		std::cout << "Call to load verify locations succeded" << std::endl;
 	}		
 
 	s.ssl = SSL_new(s.ctx);
 	if (!s.ssl) {
-		perror("ssl failed");
-		ERR_print_errors_fp(stderr);
-		exit(EXIT_FAILURE);
+		perror ( "ssl failed" );
+		ERR_print_errors_fp ( stderr );
+		return 0;
 	} else {
 		std::cout << "Call to ssl succeded" << std::endl;
 	}	
 	
 	if (SSL_set_fd(s.ssl, s.socket) != 1) {
-		perror("ssl set fd failed");		
-		exit(EXIT_FAILURE);
+		perror ( "ssl set fd failed" );		
+		return 0;
 	} else {
 		std::cout << "Call to ssl set fd succeded" << std::endl;
 	}	
@@ -343,14 +368,16 @@ void NetworkSystem::setupClientOpenssl (int sock)
 	if ((ret = SSL_connect( s.ssl )) != 1) {
 		if (checkOpensslError( sock, ret )) {
 			std::cout << "Non-blocking call to ssl connect tentatively succeded" << std::endl;
+			return 3; // MP: Maybe this shold be 2?
 		} else {
-			netPrintError( ret, "SSL_connect failed", s.ssl );		
+			netPrintError( ret, "SSL_connect failed", s.ssl );	
+			return 0;	
 		}
 	} else {
 		std::cout << "Call to ssl connect succeded" << std::endl;
 	}  
 	
-	s.security++;	
+	return 3;	
 }
 
 void NetworkSystem::netStartClient ( netPort cli_port, std::string srv_addr )
@@ -368,7 +395,7 @@ void NetworkSystem::netStartClient ( netPort cli_port, std::string srv_addr )
 					NetAddr(NET_ANY, mHostName, mHostIP, cli_port), netAddr );
 }
 
-int NetworkSystem::netClientConnectToServer(std::string srv_name, netPort srv_port, bool blocking )
+int NetworkSystem::netClientConnectToServer (std::string srv_name, netPort srv_port, bool blocking )
 {
 	NetSock cs;
 	std::string cli_name;
@@ -378,9 +405,9 @@ int NetworkSystem::netClientConnectToServer(std::string srv_name, netPort srv_po
 	// check server name for dots
 	int dots = 0;
 	for (int n = 0; n < srv_name.length(); n++)
-		if (srv_name.at(n) == '.') dots++;
+		if ( srv_name.at(n) == '.' ) dots++;
 
-	if (srv_name.compare("localhost") == 0) {
+	if (srv_name.compare ( "localhost" ) == 0) {
 		// server is localhost
 		srv_ip = mHostIP;
 	} else if (dots == 3) {
@@ -408,35 +435,31 @@ int NetworkSystem::netClientConnectToServer(std::string srv_name, netPort srv_po
 				struct sockaddr_in6* ipv6 = (struct sockaddr_in6*)p->ai_addr;
 				addr = (struct in_addr*) & (ipv6->sin6_addr);
 			}
-			inet_ntop(p->ai_family, addr, ipstr, sizeof ipstr);
+			inet_ntop ( p->ai_family, addr, ipstr, sizeof ipstr );
 		}		
-		srv_ip = getStrToIP(ipstr);
+		srv_ip = getStrToIP ( ipstr );
 	}
 
 	// find a local TCP socket service
 	cli_sock_svc = netFindSocket ( NET_CLI, NET_TCP, NET_ANY );
-	cs			= getSock(cli_sock_svc);
-	cli_name	= cs.src.name;
-	cli_ip		= mHostIP;
-	cli_port	= cs.src.port;
+	cs = getSock(cli_sock_svc);
+	cli_name = cs.src.name;
+	cli_ip = mHostIP;
+	cli_port = cs.src.port;
 
-	// find or create a socket
-	cli_sock_tcp = netFindSocket ( NET_CLI, NET_TCP, NetAddr(NET_CONNECT, srv_name, srv_ip, srv_port) );
-
-	if ( cli_sock_tcp == NET_ERR ) {
-		// not yet connected
-
-		// create a socket to server (not yet on)
-		cli_sock_tcp = netAddSocket ( NET_CLI, NET_TCP, NET_ENABLE, blocking, 
-							NetAddr( NET_CONNECT, cli_name, cli_ip, cli_port), NetAddr(NET_CONNECT, srv_name, srv_ip, srv_port) );
-
-		if (cli_sock_tcp == NET_ERR ) {			
+	// find or create a socket, connect it if needed
+	NetAddr srv_addr = NetAddr ( NET_CONNECT, srv_name, srv_ip, srv_port );
+	cli_sock_tcp = netFindSocket ( NET_CLI, NET_TCP, srv_addr );
+	if ( cli_sock_tcp == NET_ERR ) { 
+		NetAddr cli_addr = NetAddr ( NET_CONNECT, cli_name, cli_ip, cli_port );
+		cli_sock_tcp = netAddSocket ( NET_CLI, NET_TCP, NET_ENABLE, blocking, cli_addr, srv_addr );
+		if ( cli_sock_tcp == NET_ERR ) {			
 			return netError ( "Unable to add socket." );
 		}
 	}
-	// reuse address
+
 	const char reuse = 1;
-	if ( setsockopt( mSockets[cli_sock_tcp].socket, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(int)) < 0) {
+	if ( setsockopt( mSockets[cli_sock_tcp].socket, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(int) ) < 0 ) {
 		if (mbVerbose) dbgprintf ( "netSys: Setting server socket as SO_REUSEADDR.\n" );
 	}
 
@@ -444,6 +467,11 @@ int NetworkSystem::netClientConnectToServer(std::string srv_name, netPort srv_po
 	if ( mSockets[cli_sock_tcp].status != NET_CONNECTED ) {
 		int result = netSocketConnect ( cli_sock_tcp );
 		if (result !=0 ) netReportError ( result );
+	}
+	
+	// MP: this should be the right spot; setup ssl if security is larger that zero
+	if ( mSockets[cli_sock_tcp].security == 1 ) {
+		mSockets[cli_sock_tcp].security = setupClientOpenssl ( cli_sock_tcp );
 	}
 	
 	return cli_sock_tcp;		// return socket for this connection
@@ -498,11 +526,6 @@ void NetworkSystem::netProcessEvents ( Event& e )
 
 		// Client received accept from server
 		int cli_sock = e.getSrcSock();
-
-		// MP: this should be the right spot; setup ssl if security is larger that zero
-		if ( mSockets[cli_sock].security == 1 ) {
-			setupClientOpenssl( cli_sock );
-		}
 
 		// Get connection data from Event
 		netIP cli_ip = e.getInt64();
@@ -775,7 +798,7 @@ int NetworkSystem::netProcessQueue (void)
 {
 	// Recieve incoming data	
 	#ifdef PROFILE_NET
-		PERF_PUSH ("netRecv");
+		PERF_PUSH ( "netRecv" );
 	#endif
 	netRecieveData ();
 	
@@ -814,7 +837,7 @@ int NetworkSystem::netRecieveData ()
 		PERF_PUSH ( "socklist" );
 	#endif
 	FD_ZERO (&sock_set);
-	for (int n=0; n < (int) mSockets.size(); n++) {
+	for (int n = 0; n < (int) mSockets.size (); n++) {
 		if ( mSockets[n].status != NET_OFF && mSockets[n].status != NET_TERMINATED ) {		// look for NET_ENABLE or NET_CONNECT
 			if ( mSockets[n].security < 2 ) { // MP: this if-else has to be worked out
 				FD_SET (mSockets[n].socket, &sock_set);
@@ -862,12 +885,12 @@ int NetworkSystem::netRecieveData ()
 	//}
 	while ( curr_socket != (int) mSockets.size() ) { 
 		if ( mSockets[curr_socket].security < 2 ) { // MP: this if-else has to be worked out
-			if ( FD_ISSET( mSockets[curr_socket].socket, &sock_set) ) {
+			if ( FD_ISSET( mSockets[curr_socket].socket, &sock_set ) ) {
 				break;
 			}
 		} else {
 			int fd = SSL_get_fd( mSockets[curr_socket].ssl );
-			if ( FD_ISSET( fd, &sock_set) ) {
+			if ( FD_ISSET( fd, &sock_set ) ) {
 				break;
 			}
 		}		
@@ -887,15 +910,24 @@ int NetworkSystem::netRecieveData ()
 		netServerListen ( curr_socket );
 	}
 
+	if ( mSockets[curr_socket].security == 2 ) { // MP: new
+		mSockets[curr_socket].security = acceptServerOpenssl ( curr_socket );
+		if ( mSockets[curr_socket].security == 3 ) {
+			netServerListenReturnSig ( curr_socket );
+		}
+		return 0;
+	}
+
 	// Receive incoming data on socket
 	#ifdef PROFILE_NET
 		PERF_PUSH ( "recv" );
 	#endif
+	
 	result = netSocketRecv ( curr_socket, mBuffer, NET_BUFSIZE-1, mBufferLen );
 	if ( result == SSL_ERROR_WANT_READ && mSockets[curr_socket].security > 1 ) { // MP: this is a little hacky
 	  goto redo_select;	
 	}
-	if ( result!=0 || mBufferLen==0 ) {
+	if ( result != 0 || mBufferLen == 0 ) {
 		netReportError ( result );		// Recv failed. Report net error
 		return 0;
 	}
@@ -1050,16 +1082,21 @@ bool NetworkSystem::netSend ( Event& e )
 {
 	// find a fully-connected socket
 	int sock = netFindOutgoingSocket ( true );
-	if (sock==-1) { 
-		if (mbVerbose) dbgprintf ("Unable to find outgoing socket.\n");
+	if ( sock == -1 ) { 
+		if ( mbVerbose ) dbgprintf ( "Unable to find outgoing socket.\n" );
 		netReportError ( 111 );		// return disconnection error
 		return false; 
 	}
 
 	//dbgprintf ( "%s send: name %s, len %d (%d data)\n", nameToStr(mHostType).c_str(), nameToStr(e->getName()).c_str(), e->getEventLength(), e->getDataLength() );
 
-	netSend ( e, NET_CONNECT, sock );
-
+    NetSock& s = mSockets[sock];
+    redo_send:
+	int result = netSend ( e, NET_CONNECT, sock );
+	if ( result == SSL_ERROR_WANT_WRITE && s.security == 3 ) {
+		//s.security = 0;
+		goto redo_send;
+	}
 	return true;
 }
 
@@ -1268,7 +1305,7 @@ void NetworkSystem::netGetHostname ()
 
 bool NetworkSystem::netSendLiteral ( std::string str, int sock )
 {
-	int len = str.length();
+	int len = str.length(), error;
 	char* buf = (char*) malloc(str.length() + 1);
 	strcpy(buf, str.c_str());	
 	
@@ -1276,7 +1313,17 @@ bool NetworkSystem::netSendLiteral ( std::string str, int sock )
 	int result;
 	NetSock& s = mSockets[sock];
 	if (mSockets[sock].mode == NET_TCP) {
-		result = send(s.socket, buf, len, 0);		// TCP/IP
+		if ( s.security < 2 ) {
+			result = send ( s.socket, buf, len, 0 ); // TCP/IP
+		} else {
+			result = SSL_write ( s.ssl, buf, len );
+			if ( result <= 0 ) {	
+				error = SSL_get_error ( s.ssl, result );
+				if ( error == SSL_ERROR_WANT_READ || error == SSL_ERROR_WANT_WRITE ) { 
+					return SSL_ERROR_WANT_WRITE;
+				}
+			}
+		} 
 	}
 	else {
 		int addr_size = sizeof(mSockets[sock].dest.addr);
@@ -1307,14 +1354,14 @@ bool NetworkSystem::netCheckError ( int result, int sock )
 // socket send()
 bool NetworkSystem::netSend ( Event& e, int mode, int sock )
 {
-	if ( sock==0 ) {	// caller wishes to send on any outgoing socket
+	if ( sock == 0 ) {	// caller wishes to send on any outgoing socket
 		sock = netFindOutgoingSocket ( true );
 		if ( sock==-1 ) return false;
 	}
-	int result;
+	int result, error;
 	e.rescope ( "nets" );
 
-	if ( e.mData==0x0 ) return false;
+	if ( e.mData == 0x0 ) return false;
 
 	// prepare serialized buffer
 	e.serialize();
@@ -1328,13 +1375,19 @@ bool NetworkSystem::netSend ( Event& e, int mode, int sock )
 	NetSock& s = mSockets[sock];
 	if ( mSockets[sock].mode==NET_TCP ) {
 		if ( s.security < 2 ) {
-			result = send ( s.socket, buf, len, 0 );		// TCP/IP
+			result = send ( s.socket, buf, len, 0 ); // TCP/IP
 		} else {
-			result = SSL_write( s.ssl, buf, len ); // MP: seems to work, but I don't think SSL_write has been tried yet by the client
+			result = SSL_write ( s.ssl, buf, len );
+			if ( result <= 0 ) {	
+				error = SSL_get_error ( s.ssl, result );
+				if ( error == SSL_ERROR_WANT_READ || error == SSL_ERROR_WANT_WRITE ) { 
+					return SSL_ERROR_WANT_WRITE;
+				}
+			}
 		}  
 	} else {
 		int addr_size = sizeof( mSockets[sock].dest.addr );
-		result = sendto ( s.socket, buf, len, 0, (sockaddr*) &s.dest.addr, addr_size);		// UDP
+		result = sendto ( s.socket, buf, len, 0, (sockaddr*) &s.dest.addr, addr_size); // UDP
 	}
 	// check connection
 	return netCheckError ( result, sock );
@@ -1521,13 +1574,13 @@ int NetworkSystem::netSocketRecv ( int sock, char* buf, int buflen, int& recvlen
 	if ( s.src.type != NET_CONNECT ) return 0;		// recv only on connection sockets
 
 	addr_size = sizeof ( s.src.addr );
-	if ( s.mode==NET_TCP ) {
+	if ( s.mode == NET_TCP ) {
 		if ( s.security < 2 ) { // MP: on the else here is where the current issue is
 			result = recv ( s.socket, buf, buflen, 0 );		// TCP/IP
 		} else {
 			result = SSL_read( s.ssl, buf, buflen );
 			if ( result <= 0 ) {	
-				if ( SSL_get_error( s.ssl, result ) == SSL_ERROR_WANT_READ ) { // SSL_ERROR_WANT_WRITE 
+				if ( SSL_get_error ( s.ssl, result ) == SSL_ERROR_WANT_READ ) {
 					return SSL_ERROR_WANT_READ;
 				}
 			}
@@ -1535,7 +1588,7 @@ int NetworkSystem::netSocketRecv ( int sock, char* buf, int buflen, int& recvlen
 	} else {
 		result = recvfrom ( s.socket, buf, buflen, 0, (sockaddr*) &s.src.addr, &addr_size );	// UDP
 	}
-	if (result==0) {
+	if ( result == 0 ) {
 		// peer has shutdown (unexpected shutdown)
 		netTerminateSocket ( sock );
 		netError ( "Unexpected shutdown");

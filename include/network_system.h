@@ -143,9 +143,11 @@
 		EventPool*  getPool()						{ return mEventPool; }
 
 	public:
-		int checkOpensslError( int sock, int ret );
-	    void setupServerOpenssl( int sock ); // MP: new
-		void setupClientOpenssl( int sock ); // MP: new
+		int checkOpensslError( int sock, int ret ); // MP: new
+	    int setupServerOpenssl( int sock ); // MP: new
+	    int acceptServerOpenssl( int sock ); // MP: new
+		int setupClientOpenssl( int sock ); // MP: new
+		void netServerListenReturnSig( int sock ); // MP: split from netServerListen
 	
 
 		EventPool*					mEventPool;				// Event Memory Pool
