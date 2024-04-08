@@ -967,7 +967,7 @@ int NetworkSystem::netRecieveData ()
 	
 	result = netSocketRecv ( curr_socket, mBuffer, NET_BUFSIZE-1, mBufferLen );
 	if ( result == SSL_ERROR_WANT_READ && mSockets[curr_socket].security > 1 ) { // MP: this is a little hacky
-	  goto redo_select;	
+	  //goto redo_select;	
 	}
 	if ( result != 0 || mBufferLen == 0 ) {
 		netReportError ( result );		// Recv failed. Report net error
@@ -1137,7 +1137,7 @@ bool NetworkSystem::netSend ( Event& e )
 	int result = netSend ( e, NET_CONNECT, sock );
 	if ( result == SSL_ERROR_WANT_WRITE && s.security == 4 ) {
 		//s.security = 0;
-		goto redo_send;
+		//goto redo_send;
 	}
 	return true;
 }
