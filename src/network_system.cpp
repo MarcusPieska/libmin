@@ -202,7 +202,7 @@ int NetworkSystem::acceptServerOpenssl (int sock)
 	if ( ( ret = SSL_accept ( s.ssl ) ) < 0 ) {
 		if ( checkOpensslError ( sock, ret ) ) {
 			std::cout << "Non-blocking call to ssl accept returned" << std::endl;
-			return 2;
+			return 3;
 		} else {	
 			netPrintError ( ret, "SSL_accept failed", s.ssl );
 			SSL_shutdown ( s.ssl );
@@ -215,7 +215,7 @@ int NetworkSystem::acceptServerOpenssl (int sock)
 		std::cout << "Call to ssl accept succeded" << std::endl;
 	}
 	
-	return 3;
+	return 4;
 }
 
 void NetworkSystem::netStartServer ( netPort srv_port )
@@ -280,7 +280,7 @@ void NetworkSystem::netServerListen ( int sock )
 	if ( s.security == 1 ) { // MP: this should be the right spot; setup ssl if security is larger than zero
 		s.security = setupServerOpenssl( srv_sock_tcp );
 	}
-	if ( s.security == 3 ) {
+	if ( s.security == 4 ) {
 		netServerListenReturnSig ( sock );
 	} 
 } 
@@ -392,7 +392,7 @@ int NetworkSystem::setupClientOpenssl ( int sock )
 		std::cout << "Call to ssl set fd succeded" << std::endl;
 	}	
 	
-	return 2;
+	return connectClientOpenssl ( sock );
 }	
 	
 int NetworkSystem::connectClientOpenssl ( int sock )
@@ -416,7 +416,7 @@ int NetworkSystem::connectClientOpenssl ( int sock )
 		std::cout << "Call to ssl connect succeded" << std::endl;
 	}  
 	
-	return 3;	
+	return 4;	
 }
 
 void NetworkSystem::netStartClient ( netPort cli_port, std::string srv_addr )
@@ -952,9 +952,9 @@ int NetworkSystem::netRecieveData ()
 		netServerListen ( curr_socket );
 	}
 
-	if ( mSockets[curr_socket].security == 2 ) { // MP: new
+	if ( mSockets[curr_socket].security == 3 ) { // MP: new
 		mSockets[curr_socket].security = acceptServerOpenssl ( curr_socket );
-		if ( mSockets[curr_socket].security == 3 ) {
+		if ( mSockets[curr_socket].security == 4 ) {
 			netServerListenReturnSig ( curr_socket );
 		}
 		return 0;
@@ -1135,7 +1135,7 @@ bool NetworkSystem::netSend ( Event& e )
     NetSock& s = mSockets[sock];
     redo_send:
 	int result = netSend ( e, NET_CONNECT, sock );
-	if ( result == SSL_ERROR_WANT_WRITE && s.security == 3 ) {
+	if ( result == SSL_ERROR_WANT_WRITE && s.security == 4 ) {
 		//s.security = 0;
 		goto redo_send;
 	}
