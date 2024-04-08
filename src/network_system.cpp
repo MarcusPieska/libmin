@@ -392,7 +392,7 @@ int NetworkSystem::setupClientOpenssl ( int sock )
 		std::cout << "Call to ssl set fd succeded" << std::endl;
 	}	
 	
-	return connectClientOpenssl ( sock );
+	return 2;
 }	
 	
 int NetworkSystem::connectClientOpenssl ( int sock )
@@ -400,12 +400,9 @@ int NetworkSystem::connectClientOpenssl ( int sock )
 	int ret=0, exp;
 	NetSock& s = mSockets[sock];
 	
-	redo_connect:
 	if ((ret = SSL_connect( s.ssl )) < 0) {
 		if (checkOpensslError( sock, ret )) {
 			std::cout << "Non-blocking call to ssl connect tentatively succeded" << std::endl;
-			sleep_ms ( 100 );
-			goto redo_connect;
 			return 2;
 		} else {
 			netPrintError( ret, "SSL_connect failed", s.ssl );	
@@ -413,6 +410,7 @@ int NetworkSystem::connectClientOpenssl ( int sock )
 		}
 	} else if (ret == 0) {
 		std::cout << "Call to ssl connect failed (2)" << std::endl;
+		return 0;
 	}
 	else {
 		std::cout << "Call to ssl connect succeded" << std::endl;
@@ -513,6 +511,9 @@ int NetworkSystem::netClientConnectToServer (std::string srv_name, netPort srv_p
 	// MP: this should be the right spot; setup ssl if security is larger that zero
 	if ( mSockets[cli_sock_tcp].security == 1 ) {
 		mSockets[cli_sock_tcp].security = setupClientOpenssl ( cli_sock_tcp );
+	}
+	if ( mSockets[cli_sock_tcp].security == 2 ) {
+		mSockets[cli_sock_tcp].security = connectClientOpenssl ( cli_sock_tcp );
 	}
 	
 	return cli_sock_tcp;		// return socket for this connection
