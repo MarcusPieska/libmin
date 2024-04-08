@@ -6,6 +6,7 @@
 //---------------------------------------------------------------------
 
 #include <assert.h>
+#include <netinet/tcp.h> // MP: Not cross-platform?
 #include "network_system.h"
 
 #ifdef __linux__
@@ -39,14 +40,27 @@ NetworkSystem::NetworkSystem ()
 	mbDebugNet = false;
 }
 
-int getReadReadyBytes ( int socket_fd ) {
-    int bytesAvailable;
-    if ( ioctl ( socket_fd, FIONREAD, &bytesAvailable ) == -1 ) {
+int get_read_ready_bytes ( SOCKET sock ) 
+{
+    int bytes_available;
+    if ( ioctl ( sock, FIONREAD, &bytes_available ) == -1 ) {
         perror ( "ioctl FIONREAD" );
         return -1; // Return -1 on error
     }
-    return bytesAvailable; // Return the number of bytes ready to be read
+    return bytes_available; // Return the number of bytes ready to be read
 }
+
+void make_sock_no_delay ( SOCKET sock ) 
+{
+  int no_delay = 1;
+  if ( setsockopt ( sock, IPPROTO_TCP, TCP_NODELAY, (char *)&no_delay, sizeof ( no_delay ) ) < 0) {
+    perror( "Call to no delay FAILED" );
+    exit( EXIT_FAILURE );
+  }  
+  else {
+    std::cout << "Call to no delay succeded" << std::endl;
+  } 
+} 
 
 void make_sock_block (SOCKET sock)				// MP: added for ssl handshake
 {
@@ -99,12 +113,22 @@ void make_sock_non_block (SOCKET sock)		// MP: added for ssl handshake
 	#endif
 }
 
+void sleep_ms ( int time_ms ) {
+  struct timespec req, rem;
+  req.tv_sec = 0;         
+  req.tv_nsec = time_ms * 1e6; 
+  std::cout << "Starting sleep ... " << std::flush;
+  nanosleep(&req, &rem); 	
+  std::cout << "waking up!" << std::endl;
+}
+
 //--------------------------------------------------- NETWORK SERVER
 //
 // MP: new, should be called by server after accept
 int NetworkSystem::setupServerOpenssl (int sock) 
 {
 	NetSock& s = mSockets[sock];
+	make_sock_no_delay ( s.socket );
 	SSL_CTX* sslctx = SSL_CTX_new ( TLS_server_method() );
 	int ret = 0, exp;
 	make_sock_non_block ( s.socket ); // MP: From what I can tell, socket is already non-blocking
@@ -170,13 +194,12 @@ int NetworkSystem::setupServerOpenssl (int sock)
 	
 	return acceptServerOpenssl (sock);
 }
-	   
-	   
+	      
 int NetworkSystem::acceptServerOpenssl (int sock) 
 { 
     NetSock& s = mSockets[sock];	   
 	int ret;
-	if ( ( ret = SSL_accept ( s.ssl ) ) <= 0 ) {
+	if ( ( ret = SSL_accept ( s.ssl ) ) < 0 ) {
 		if ( checkOpensslError ( sock, ret ) ) {
 			std::cout << "Non-blocking call to ssl accept returned" << std::endl;
 			return 2;
@@ -185,7 +208,9 @@ int NetworkSystem::acceptServerOpenssl (int sock)
 			SSL_shutdown ( s.ssl );
 			SSL_free ( s.ssl );  
 			return 0;   
-		}   
+		}
+	} else if ( ret == 0 ) {
+		std::cout << "Call to ssl accept failed (2)" << std::endl;
 	} else {
 		std::cout << "Call to ssl accept succeded" << std::endl;
 	}
@@ -247,6 +272,7 @@ void NetworkSystem::netServerListen ( int sock )
 										NetAddr(NET_CONNECT, "", cli_ip, cli_port) );
 
 	NetSock& s = mSockets[srv_sock_tcp];
+	make_sock_non_block ( newSOCK );
 	s.socket = newSOCK;			// assign literal socket
 	s.dest.ipL = cli_ip;		// assign client IP
 	s.dest.port = cli_port;		// assign client port
@@ -297,11 +323,12 @@ void NetworkSystem::netServerListenReturnSig ( int sock )
 //----------------------------------------------------------- NETWORK CLIENT
 //
 // MP: new, should be called by client after connect
-int NetworkSystem::setupClientOpenssl (int sock) 
+int NetworkSystem::setupClientOpenssl ( int sock ) 
 { 
 	int ret=0, exp;
 	NetSock& s = mSockets[sock];
-	make_sock_non_block( s.socket ); // MP: From what I can tell, socket is already non-blocking
+	make_sock_no_delay ( s.socket );
+	make_sock_non_block ( s.socket ); // MP: From what I can tell, socket is already non-blocking
 	//make_sock_block( s.socket ); 
 	#if OPENSSL_VERSION_NUMBER < 0x10100000L
 	  // version 1.1
@@ -365,15 +392,29 @@ int NetworkSystem::setupClientOpenssl (int sock)
 		std::cout << "Call to ssl set fd succeded" << std::endl;
 	}	
 	
-	if ((ret = SSL_connect( s.ssl )) != 1) {
+	return connectClientOpenssl ( sock );
+}	
+	
+int NetworkSystem::connectClientOpenssl ( int sock )
+{
+	int ret=0, exp;
+	NetSock& s = mSockets[sock];
+	
+	redo_connect:
+	if ((ret = SSL_connect( s.ssl )) < 0) {
 		if (checkOpensslError( sock, ret )) {
 			std::cout << "Non-blocking call to ssl connect tentatively succeded" << std::endl;
-			return 3; // MP: Maybe this shold be 2?
+			sleep_ms ( 100 );
+			goto redo_connect;
+			return 2;
 		} else {
 			netPrintError( ret, "SSL_connect failed", s.ssl );	
 			return 0;	
 		}
-	} else {
+	} else if (ret == 0) {
+		std::cout << "Call to ssl connect failed (2)" << std::endl;
+	}
+	else {
 		std::cout << "Call to ssl connect succeded" << std::endl;
 	}  
 	

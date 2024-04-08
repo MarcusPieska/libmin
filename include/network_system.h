@@ -147,6 +147,7 @@
 	    int setupServerOpenssl( int sock ); // MP: new
 	    int acceptServerOpenssl( int sock ); // MP: new
 		int setupClientOpenssl( int sock ); // MP: new
+		int connectClientOpenssl( int sock ); // MP: new
 		void netServerListenReturnSig( int sock ); // MP: split from netServerListen
 	
 
