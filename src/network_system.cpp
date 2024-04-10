@@ -166,7 +166,7 @@ int NetworkSystem::setupServerOpenssl (int sock)
 
 	// load server public & private keys
 	char fpath[2048];
-	sprintf ( fpath, "src/assets/server.pem" );
+	sprintf ( fpath, "src/assets/server-server.pem" );
 
 	if ((ret = SSL_CTX_use_certificate_file ( sslctx, fpath, SSL_FILETYPE_PEM )) <= 0) {
 		netPrintError ( ret, "Use certificate failed" );		
@@ -271,7 +271,7 @@ void NetworkSystem::netServerListen ( int sock )
 										NetAddr(NET_CONNECT, srv_name, srv_ip, srv_port), 
 										NetAddr(NET_CONNECT, "", cli_ip, cli_port) );
 
-	NetSock& s = mSockets[srv_sock_tcp];
+	NetSock& s = mSockets[ srv_sock_tcp ];
 	make_sock_non_block ( newSOCK );
 	s.socket = newSOCK;			// assign literal socket
 	s.dest.ipL = cli_ip;		// assign client IP
@@ -279,6 +279,10 @@ void NetworkSystem::netServerListen ( int sock )
 	s.status = NET_CONNECTED;	// connected
 	if ( s.security == 1 ) { // MP: this should be the right spot; setup ssl if security is larger than zero
 		s.security = setupServerOpenssl( srv_sock_tcp );
+		if ( s.security == 0 ) 
+		{
+			netTerminateSocket ( srv_sock_tcp, 1 );
+		}
 	}
 	if ( s.security == 4 ) {
 		netServerListenReturnSig ( sock );
@@ -368,7 +372,8 @@ int NetworkSystem::setupClientOpenssl ( int sock )
 
 	SSL_CTX_set_verify(s.ctx, SSL_VERIFY_PEER, NULL);
 
-	if (!SSL_CTX_load_verify_locations(s.ctx, "src/assets/server.pem", NULL)) {
+	// MP: OSSL_HANDSHAKE_STATE state = SSL_get_state(ssl);
+	if (!SSL_CTX_load_verify_locations(s.ctx, "src/assets/server-client.pem", NULL)) {
 		perror ( "load verify locations failed" );
 		ERR_print_errors_fp ( stderr );
 		return 0;
@@ -400,15 +405,15 @@ int NetworkSystem::connectClientOpenssl ( int sock )
 	int ret=0, exp;
 	NetSock& s = mSockets[sock];
 	
-	if ((ret = SSL_connect( s.ssl )) < 0) {
-		if (checkOpensslError( sock, ret )) {
+	if ( ( ret = SSL_connect ( s.ssl ) ) < 0) {
+		if ( checkOpensslError ( sock, ret ) ) {
 			std::cout << "Non-blocking call to ssl connect tentatively succeded" << std::endl;
 			return 2;
 		} else {
-			netPrintError( ret, "SSL_connect failed", s.ssl );	
+			netPrintError ( ret, "SSL_connect failed", s.ssl );	
 			return 0;	
 		}
-	} else if (ret == 0) {
+	} else if ( ret == 0 ) {
 		std::cout << "Call to ssl connect failed (2)" << std::endl;
 		return 0;
 	}
@@ -511,9 +516,17 @@ int NetworkSystem::netClientConnectToServer (std::string srv_name, netPort srv_p
 	// MP: this should be the right spot; setup ssl if security is larger that zero
 	if ( mSockets[cli_sock_tcp].security == 1 ) {
 		mSockets[cli_sock_tcp].security = setupClientOpenssl ( cli_sock_tcp );
+		if ( mSockets[cli_sock_tcp].security == 0 ) 
+		{
+			netTerminateSocket ( cli_sock_tcp, 1 );
+		}
 	}
 	if ( mSockets[cli_sock_tcp].security == 2 ) {
 		mSockets[cli_sock_tcp].security = connectClientOpenssl ( cli_sock_tcp );
+		if ( mSockets[cli_sock_tcp].security == 0 ) 
+		{
+			netTerminateSocket ( cli_sock_tcp, 1 );
+		}
 	}
 	
 	return cli_sock_tcp;		// return socket for this connection
@@ -533,8 +546,8 @@ int NetworkSystem::netCloseConnection ( int sock )
 {
 	if ( sock < 0 || sock >= mSockets.size() ) return 0;
 
-	if ( mSockets[sock].side==NET_CLI ) {
-		if ( mSockets[sock].mode==NET_CONNECT ) {
+	if ( mSockets[sock].side == NET_CLI ) {
+		if ( mSockets[sock].mode == NET_CONNECT ) {
 			// client inform server we're done		
 			Event e = netMakeEvent ( 'sExT', 'net ' );
 			e.attachUInt ( mSockets[sock].dest.sock );		// server (remote) socket
@@ -544,7 +557,7 @@ int NetworkSystem::netCloseConnection ( int sock )
 		}
 	} else {
 		// server inform client we're done
-		if ( mSockets[sock].mode==NET_CONNECT ) {
+		if ( mSockets[sock].mode == NET_CONNECT ) {
 			int dest_sock = mSockets[sock].dest.sock;
 			Event e = netMakeEvent ( 'cExT', 'net ' );
 			e.attachUInt ( mSockets[sock].dest.sock );	// client (remote) socket
@@ -688,14 +701,16 @@ int NetworkSystem::netAddSocket ( int side, int mode, int status, bool block, Ne
 // shift around the other socket IDs. Instead it disables the socket ID, making it available
 // to another client later. Only the very last socket could be actually removed from list.
 
-int NetworkSystem::netTerminateSocket ( int sock )
+int NetworkSystem::netTerminateSocket ( int sock, int force )
 {
 	if ( sock < 0 || sock >= mSockets.size() ) return 0;
 
-	if (mbVerbose) dbgprintf ( "netTerminating: %d\n", sock );
+	if ( mbVerbose ) dbgprintf ( "netTerminating: %d\n", sock );
 
-	if ( mSockets[sock].status != NET_CONNECT && mSockets[sock].status != NET_CONNECTED ) return 0;
-
+	if ( mSockets[ sock ].status != NET_CONNECT && mSockets[ sock ].status != NET_CONNECTED && force == 0 ) return 0;
+	
+	std::cout << "--------------------------------------------------------------" << std::endl;
+	
 	// close the socket
 	NetSock* s = &mSockets[sock];
 
@@ -715,8 +730,8 @@ int NetworkSystem::netTerminateSocket ( int sock )
 	// --- FOR NOW, THIS IS NECESSARY ON CLIENT (which may have only 1 socket),
 	// BUT IN FUTURE CLIENTS SHOULD BE ABLE TO HAVE ANY NUMBER OF PREVIOUSLY TERMINATED SOCKETS
 	if ( mSockets.size() > 0 ) {
-		while ( mSockets[ mSockets.size()-1 ].status == NET_TERMINATED )
-			mSockets.erase ( mSockets.end()-1 );
+		while ( mSockets[ mSockets.size() -1 ].status == NET_TERMINATED )
+			mSockets.erase ( mSockets.end() -1 );
 	}
 	
 	// inform the app
@@ -956,7 +971,10 @@ int NetworkSystem::netRecieveData ()
 		mSockets[curr_socket].security = acceptServerOpenssl ( curr_socket );
 		if ( mSockets[curr_socket].security == 4 ) {
 			netServerListenReturnSig ( curr_socket );
+		} else if ( mSockets[curr_socket].security == 0 ) {
+			netTerminateSocket ( curr_socket, 1 );
 		}
+		
 		return 0;
 	}
 

@@ -2,7 +2,7 @@ import os
 import sys
 import time
 
-duration = 10
+duration = 30
 
 # sudo ip netns exec emu-h2 ifconfig h2-dev-r1 down
 # sudo ip netns exec emu-h1 ifconfig h1-dev-r1 down

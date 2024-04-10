@@ -113,7 +113,7 @@
 		int netFindSocket ( int side, int mode, int type );
 		int netFindSocket ( int side, int mode, NetAddr dest );
 		int netFindOutgoingSocket ( bool bTcp );
-		int netTerminateSocket ( int sock );
+		int netTerminateSocket ( int sock, int force=0 );
 		NetSock& getSock (int sock)					{ return mSockets[sock]; }
 		std::string getSocketIP(int sock)		{ return getIPStr( mSockets[sock].dest.ipL ); }
 
