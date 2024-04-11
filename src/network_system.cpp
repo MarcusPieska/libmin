@@ -40,6 +40,15 @@ NetworkSystem::NetworkSystem ()
 	mbDebugNet = false;
 }
 
+void sleep_ms ( int time_ms ) {
+  struct timespec req, rem;
+  req.tv_sec = 0;         
+  req.tv_nsec = time_ms * 1e6; 
+  std::cout << "Starting sleep ... " << std::flush;
+  nanosleep(&req, &rem); 	
+  std::cout << "waking up!" << std::endl;
+}
+
 int get_read_ready_bytes ( SOCKET sock ) 
 {
     int bytes_available;
@@ -62,7 +71,7 @@ void make_sock_no_delay ( SOCKET sock )
   } 
 } 
 
-void make_sock_block (SOCKET sock)				// MP: added for ssl handshake
+void make_sock_block ( SOCKET sock )				// MP: added for ssl handshake
 {
 	#ifdef _WIN32
 	  // windows
@@ -88,7 +97,7 @@ void make_sock_block (SOCKET sock)				// MP: added for ssl handshake
 	#endif
 }
 
-void make_sock_non_block (SOCKET sock)		// MP: added for ssl handshake
+void make_sock_non_block ( SOCKET sock )		// MP: added for ssl handshake
 {
 	#ifdef _WIN32
 		// windows
@@ -113,43 +122,57 @@ void make_sock_non_block (SOCKET sock)		// MP: added for ssl handshake
 	#endif
 }
 
-void sleep_ms ( int time_ms ) {
-  struct timespec req, rem;
-  req.tv_sec = 0;         
-  req.tv_nsec = time_ms * 1e6; 
-  std::cout << "Starting sleep ... " << std::flush;
-  nanosleep(&req, &rem); 	
-  std::cout << "waking up!" << std::endl;
+void NetworkSystem::free_openssl ( SOCKET sock ) 
+{
+	NetSock& s = mSockets [ sock ];
+	if ( s.ssl != 0 ) {
+		if ( SSL_shutdown ( s.ssl ) == 0 ) {
+			SSL_shutdown ( s.ssl );
+		} 
+		SSL_free ( s.ssl ); 
+		s.ssl = 0;
+	}
+	if ( s.ctx != 0 ) {
+		SSL_CTX_free ( s.ctx );
+		s.ctx = 0;
+	}
 }
 
 //--------------------------------------------------- NETWORK SERVER
 //
 // MP: new, should be called by server after accept
-int NetworkSystem::setupServerOpenssl (int sock) 
+int NetworkSystem::setupServerOpenssl ( int sock ) 
 {
-	NetSock& s = mSockets[sock];
+	NetSock& s = mSockets [ sock ];
 	make_sock_no_delay ( s.socket );
-	SSL_CTX* sslctx = SSL_CTX_new ( TLS_server_method() );
 	int ret = 0, exp;
 	make_sock_non_block ( s.socket ); // MP: From what I can tell, socket is already non-blocking
 	//make_sock_block ( s.socket ); 
+	
+	if ( ( s.ctx = SSL_CTX_new ( TLS_server_method () ) ) == 0 ) {
+		perror( "get new ssl ctx failed" );
+		free_openssl ( sock );
+		return 0;
+	}
+	
 	dbgprintf ( "OpenSSL: %s\n", OPENSSL_VERSION_TEXT ); // openssl version 
 
 	exp = SSL_OP_SINGLE_DH_USE;
-	if (((ret = SSL_CTX_set_options( sslctx, exp )) & exp) != exp) {
+	if (((ret = SSL_CTX_set_options( s.ctx, exp )) & exp) != exp ) {
 		perror( "set ssl option failed" );
+		free_openssl ( sock );
 		return 0;
 	} else {
 		std::cout << "Call to set ssl option succeded" << std::endl;
 	}
 
 	// specify CA veryify locations for trusted certs
-	if ((ret = SSL_CTX_set_default_verify_paths ( sslctx )) <= 0 ) {
+	if ( ( ret = SSL_CTX_set_default_verify_paths ( s.ctx ) ) <= 0 ) {
 		netPrintError( ret, "Default verify paths failed" );
 	} else {
 		std::cout << "Call to default verify paths succeded" << std::endl;
 	}
-	if ((ret = SSL_CTX_load_verify_locations ( sslctx, "/etc/ssl/certs/ca-certificates.crt", "/etc/ssl/certs" )) <= 0) {
+	if ( ( ret = SSL_CTX_load_verify_locations ( s.ctx, "/etc/ssl/certs/ca-certificates.crt", "/etc/ssl/certs" ) ) <= 0) {
 		netPrintError ( ret, "Load verify locations failed" );
 	} else {
 		std::cout << "Call to load verify locations succeded" << std::endl;
@@ -168,8 +191,9 @@ int NetworkSystem::setupServerOpenssl (int sock)
 	char fpath[2048];
 	sprintf ( fpath, "src/assets/server-server.pem" );
 
-	if ((ret = SSL_CTX_use_certificate_file ( sslctx, fpath, SSL_FILETYPE_PEM )) <= 0) {
-		netPrintError ( ret, "Use certificate failed" );		
+	if ( ( ret = SSL_CTX_use_certificate_file ( s.ctx, fpath, SSL_FILETYPE_PEM ) ) <= 0 ) {
+		netPrintError ( ret, "Use certificate failed" );	
+		free_openssl ( sock ); 	
 		return 0;
 	} else {
 		std::cout << "Call to use certificate succeded" << std::endl;
@@ -177,44 +201,47 @@ int NetworkSystem::setupServerOpenssl (int sock)
 
 	sprintf ( fpath, "src/assets/server.key" );
 
-	if ((ret = SSL_CTX_use_PrivateKey_file ( sslctx, fpath, SSL_FILETYPE_PEM )) <= 0) {
+	if ( ( ret = SSL_CTX_use_PrivateKey_file ( s.ctx, fpath, SSL_FILETYPE_PEM ) ) <= 0) {
 		netPrintError ( ret, "Use private key failed" );
+		free_openssl ( sock ); 
 		return 0;
 	} else {
 		std::cout << "Call to use private key succeded" << std::endl;
 	}
 
-	s.ssl = SSL_new ( sslctx );
-	if (SSL_set_fd ( s.ssl, s.socket ) <= 0) {
+	s.ssl = SSL_new ( s.ctx );
+	if ( SSL_set_fd ( s.ssl, s.socket ) <= 0 ) {
 		perror( "set ssl fd failed" );
+		free_openssl ( sock ); 
 		return 0;
 	} else {
 		std::cout << "Call to set ssl fd succeded" << std::endl;
 	}
 	
-	return acceptServerOpenssl (sock);
+	return acceptServerOpenssl ( sock );
 }
 	      
-int NetworkSystem::acceptServerOpenssl (int sock) 
+int NetworkSystem::acceptServerOpenssl ( int sock ) 
 { 
-    NetSock& s = mSockets[sock];	   
+    NetSock& s = mSockets[ sock ];	   
 	int ret;
 	if ( ( ret = SSL_accept ( s.ssl ) ) < 0 ) {
 		if ( checkOpensslError ( sock, ret ) ) {
 			std::cout << "Non-blocking call to ssl accept returned" << std::endl;
+			std::cout << "Ready for safe transfer: " << SSL_is_init_finished ( s.ssl ) << std::endl;
 			return 3;
 		} else {	
 			netPrintError ( ret, "SSL_accept failed", s.ssl );
-			SSL_shutdown ( s.ssl );
-			SSL_free ( s.ssl );  
+			free_openssl ( sock ); 
 			return 0;   
 		}
 	} else if ( ret == 0 ) {
 		std::cout << "Call to ssl accept failed (2)" << std::endl;
-	} else {
-		std::cout << "Call to ssl accept succeded" << std::endl;
-	}
-	
+		free_openssl ( sock );
+		return 0; 
+	} 
+	std::cout << "Call to ssl accept succeded" << std::endl;
+	std::cout << "Ready for safe transfer: " << SSL_is_init_finished ( s.ssl ) << std::endl;
 	return 4;
 }
 
@@ -348,10 +375,11 @@ int NetworkSystem::setupClientOpenssl ( int sock )
 	
 	//s.bio = BIO_new_socket(s.socket, BIO_NOCLOSE);
 	
-	s.ctx = SSL_CTX_new ( TLS_client_method() );
+	s.ctx = SSL_CTX_new ( TLS_client_method () );
 	if (!s.ctx) {
 		perror ( "ctx failed" );
 		ERR_print_errors_fp ( stderr );
+		free_openssl ( sock );
 		return 0;
 	} else {
 		std::cout << "Call to ctx succeded" << std::endl;
@@ -367,31 +395,32 @@ int NetworkSystem::setupClientOpenssl ( int sock )
 	} */
 
 	//-- use TLS 1.2+ only, since we have custom client-server protocols
-	SSL_CTX_set_min_proto_version( s.ctx, TLS1_2_VERSION );
-	SSL_CTX_set_max_proto_version( s.ctx, TLS1_3_VERSION );
+	SSL_CTX_set_min_proto_version ( s.ctx, TLS1_2_VERSION );
+	SSL_CTX_set_max_proto_version ( s.ctx, TLS1_3_VERSION );
+	SSL_CTX_set_verify ( s.ctx, SSL_VERIFY_PEER, NULL );
 
-	SSL_CTX_set_verify(s.ctx, SSL_VERIFY_PEER, NULL);
-
-	// MP: OSSL_HANDSHAKE_STATE state = SSL_get_state(ssl);
-	if (!SSL_CTX_load_verify_locations(s.ctx, "src/assets/server-client.pem", NULL)) {
+	if ( !SSL_CTX_load_verify_locations( s.ctx, "src/assets/server-client.pem", NULL ) ) {
 		perror ( "load verify locations failed" );
 		ERR_print_errors_fp ( stderr );
+		free_openssl ( sock );
 		return 0;
 	} else {
 		std::cout << "Call to load verify locations succeded" << std::endl;
 	}		
 
-	s.ssl = SSL_new(s.ctx);
-	if (!s.ssl) {
+	s.ssl = SSL_new ( s.ctx );
+	if ( !s.ssl ) {
 		perror ( "ssl failed" );
 		ERR_print_errors_fp ( stderr );
+		free_openssl ( sock ); 
 		return 0;
 	} else {
 		std::cout << "Call to ssl succeded" << std::endl;
 	}	
 	
-	if (SSL_set_fd(s.ssl, s.socket) != 1) {
-		perror ( "ssl set fd failed" );		
+	if ( SSL_set_fd ( s.ssl, s.socket ) != 1 ) {
+		perror ( "ssl set fd failed" );	
+		free_openssl ( sock ); 	
 		return 0;
 	} else {
 		std::cout << "Call to ssl set fd succeded" << std::endl;
@@ -405,22 +434,24 @@ int NetworkSystem::connectClientOpenssl ( int sock )
 	int ret=0, exp;
 	NetSock& s = mSockets[sock];
 	
-	if ( ( ret = SSL_connect ( s.ssl ) ) < 0) {
+	if ( ( ret = SSL_connect ( s.ssl ) ) < 0 ) {
 		if ( checkOpensslError ( sock, ret ) ) {
 			std::cout << "Non-blocking call to ssl connect tentatively succeded" << std::endl;
+			std::cout << "Ready for safe transfer: " << SSL_is_init_finished ( s.ssl ) << std::endl;
 			return 2;
 		} else {
 			netPrintError ( ret, "SSL_connect failed", s.ssl );	
+			free_openssl ( sock ); 	
 			return 0;	
 		}
 	} else if ( ret == 0 ) {
 		std::cout << "Call to ssl connect failed (2)" << std::endl;
+		free_openssl ( sock ); 	
 		return 0;
 	}
-	else {
-		std::cout << "Call to ssl connect succeded" << std::endl;
-	}  
-	
+
+	std::cout << "Call to ssl connect succeded" << std::endl;
+	std::cout << "Ready for safe transfer: " << SSL_is_init_finished ( s.ssl ) << std::endl;
 	return 4;	
 }
 
@@ -676,7 +707,11 @@ int NetworkSystem::netAddSocket ( int side, int mode, int status, bool block, Ne
 	s.broadcast = 1;
 	s.security = 1; // MP: use openssl by default
 
-	int n = mSockets.size();
+	s.ctx = 0;
+	s.ssl = 0;
+	s.bio = 0;
+
+	int n = mSockets.size ();
 	mSockets.push_back ( s );
 	netUpdateSocket ( n );
 
@@ -708,8 +743,6 @@ int NetworkSystem::netTerminateSocket ( int sock, int force )
 	if ( mbVerbose ) dbgprintf ( "netTerminating: %d\n", sock );
 
 	if ( mSockets[ sock ].status != NET_CONNECT && mSockets[ sock ].status != NET_CONNECTED && force == 0 ) return 0;
-	
-	std::cout << "--------------------------------------------------------------" << std::endl;
 	
 	// close the socket
 	NetSock* s = &mSockets[sock];
@@ -825,10 +858,10 @@ std::string NetworkSystem::netPrintError ( int ret, std::string msg, SSL* sslsoc
 	 return msg;
 }
 
-int NetworkSystem::checkOpensslError (int sock, int ret) {
-	NetSock& s = mSockets[sock];
-	int err = SSL_get_error( s.ssl, ret );
-	switch (err) {
+int NetworkSystem::checkOpensslError ( int sock, int ret ) {
+	NetSock& s = mSockets [ sock ];
+	int err = SSL_get_error ( s.ssl, ret );
+	switch ( err ) {
 		case SSL_ERROR_WANT_READ:
 			return 1;
 		case SSL_ERROR_WANT_WRITE:
@@ -851,7 +884,7 @@ int NetworkSystem::checkOpensslError (int sock, int ret) {
 
 
 // Process Queue
-int NetworkSystem::netProcessQueue (void)
+int NetworkSystem::netProcessQueue ( void )
 {
 	// Recieve incoming data	
 	#ifdef PROFILE_NET
@@ -967,14 +1000,21 @@ int NetworkSystem::netRecieveData ()
 		netServerListen ( curr_socket );
 	}
 
-	if ( mSockets[curr_socket].security == 3 ) { // MP: new
-		mSockets[curr_socket].security = acceptServerOpenssl ( curr_socket );
-		if ( mSockets[curr_socket].security == 4 ) {
+	if ( mSockets[ curr_socket ].security == 3 ) { // MP: new
+		mSockets[ curr_socket ].security = acceptServerOpenssl ( curr_socket );
+		if ( mSockets[ curr_socket ].security == 4 ) {
 			netServerListenReturnSig ( curr_socket );
-		} else if ( mSockets[curr_socket].security == 0 ) {
+		} else if ( mSockets[ curr_socket ].security == 0 ) {
 			netTerminateSocket ( curr_socket, 1 );
 		}
-		
+		return 0;
+	}
+
+	if ( mSockets[ curr_socket ].security == 2 ) { // MP: new
+		mSockets[ curr_socket ].security = connectClientOpenssl ( curr_socket );
+		if ( mSockets[ curr_socket ].security == 0 ) {
+			netTerminateSocket ( curr_socket, 1 );
+		}
 		return 0;
 	}
 
