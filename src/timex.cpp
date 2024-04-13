@@ -270,18 +270,59 @@
 	sjtime TimeX::GetSystemNSec ()
 	{
 		#ifdef _MSC_VER
-            // nanosec accuracy
+      // nanosec accuracy (Windows)
 			LARGE_INTEGER currCount;
 			QueryPerformanceCounter ( &currCount );
 			return m_BaseTime + sjtime( (double(currCount.QuadPart-m_BaseCount.QuadPart) / m_BaseFreq.QuadPart) * SEC_SCALAR);
-        #else
-            // millisec accuracy
-            struct timeval tv;
-            gettimeofday(&tv, NULL);
-            sjtime t = ((sjtime) tv.tv_sec * 1000000LL) + (sjtime) tv.tv_usec;
-            return m_BaseTime + ( t - m_BaseTicks) * 1000LL;			// 1000LL - converts microseconds to milliseconds
+    #else
+      // nanosec accuracy (Linux)
+		  timespec t;
+			clock_gettime ( CLOCK_PROCESS_CPUTTIME_ID, &t );      
+			sjtime t_nsec = ((sjtime) t.tv_sec * 1000000LL) + (sjtime) tv.tv_nsec;
+      return m_BaseTime + ( t_nsec - m_BaseTicks);
 		#endif	
+
+		/*-- old code for linux, not as accurate as clock_gettime
+		struct timeval tv;
+    gettimeofday(&tv, NULL);
+    sjtime t = ((sjtime) tv.tv_sec * 1000000LL) + (sjtime) tv.tv_usec;
+		*/
 	}
+
+#ifdef _MSC_VER
+	
+	// windows nanosleep
+	BOOLEAN nanosleep(long long ns) {		
+		HANDLE timer;	
+		LARGE_INTEGER li;	
+		// create timer
+		if(!(timer = CreateWaitableTimer(NULL, TRUE, NULL)))
+			return FALSE;
+		// set timer properties
+		li.QuadPart = -ns;
+		if(!SetWaitableTimer(timer, &li, 0, NULL, NULL, FALSE)){
+			CloseHandle(timer);
+			return FALSE;
+		}
+		// start & wait for timer
+		WaitForSingleObject(timer, INFINITE);		
+		CloseHandle(timer);		
+		return TRUE;
+	}
+#endif
+
+	void TimeX::SleepNSec ( float nsec )
+	{
+		#ifdef _MSC_VER
+			nanosleep ( (long long) nsec );
+		#else
+		  timespec t;
+			t.tv_sec = int(msec / 1000);
+			t.tv_nsec = (msec - (t.tv_sec*1000)) * 1000000L;
+			nanosleep ( t );
+		#endif
+	}
+  
 
 	void TimeX::SetTimeNSec ()
 	{

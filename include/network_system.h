@@ -143,14 +143,17 @@
 		EventPool*  getPool()						{ return mEventPool; }
 
 	public:
-		void free_openssl ( int sock ); 
-		int checkOpensslError ( int sock, int ret ); // MP: new
-	    int setupServerOpenssl ( int sock ); // MP: new
-	    int acceptServerOpenssl ( int sock ); // MP: new
-		int setupClientOpenssl ( int sock ); // MP: new
-		int connectClientOpenssl ( int sock ); // MP: new
-		void netServerListenReturnSig ( int sock ); // MP: split from netServerListen
-	
+		#ifdef BUILD_OPENSSL
+		  // MP (Markus Pieska) - OpenSSL
+			void free_openssl ( int sock ); 
+			int checkOpensslError( int sock, int ret ); 
+			int setupServerOpenssl( int sock ); 
+			int acceptServerOpenssl( int sock );
+			int setupClientOpenssl( int sock ); 
+			int connectClientOpenssl( int sock );			
+	  #endif
+		
+		void netServerListenReturnSig( int sock );	
 
 		EventPool*					mEventPool;				// Event Memory Pool
 		EventQueue					mEventQueue;			// Network Event queue
