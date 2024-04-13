@@ -19,7 +19,7 @@
   #include <netinet/tcp.h> 
 #endif
 
-#ifdef USE_OPENSSL
+#ifdef BUILD_OPENSSL
 	#include <openssl/opensslv.h>
   #include <openssl/crypto.h>
 	#include <openssl/pem.h>
@@ -137,7 +137,7 @@ void make_sock_non_block ( SOCKET sock )		// MP: added for ssl handshake
 
 #ifdef BUILD_OPENSSL
 	
-	void NetworkSystem::free_openssl ( SOCKET sock ) 
+	void NetworkSystem::free_openssl ( int sock ) 
 	{
 		NetSock& s = mSockets [ sock ];
 		if ( s.ssl != 0 ) {

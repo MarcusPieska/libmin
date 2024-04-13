@@ -190,7 +190,7 @@ function ( _REQUIRE_OPENSSL use_openssl_default)
 	    find_package(OpenSSL)
 
 	    if ( OPENSSL_FOUND )	
-		    add_definitions(-DUSE_OPENSSL)
+		    add_definitions(-DBUILD_OPENSSL)
 	
 		    include_directories ( ${OPENSSL_INCLUDE_DIR} )
 		    link_directories ( ${OPENSSL_LIB_DIR} )
