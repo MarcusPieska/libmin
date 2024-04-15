@@ -276,10 +276,14 @@
 			return m_BaseTime + sjtime( (double(currCount.QuadPart-m_BaseCount.QuadPart) / m_BaseFreq.QuadPart) * SEC_SCALAR);
     #else
       // nanosec accuracy (Linux)
-		  timespec t;
-			clock_gettime ( CLOCK_PROCESS_CPUTTIME_ID, &t );      
+		  /*timespec t;
+			clock_gettime ( CLOCK_PROCESS_CPUTTIME_ID, &t ); // MP-TODO: Stackoverflow: Add -lrt to the end of g++ command line. This links in the librt.so "Real Time" shared library.    
 			sjtime t_nsec = ((sjtime) t.tv_sec * 1000000LL) + (sjtime) tv.tv_nsec;
-      return m_BaseTime + ( t_nsec - m_BaseTicks);
+			return m_BaseTime + ( t_nsec - m_BaseTicks);*/
+            struct timeval tv; // MP-TODO: Quick non-fix to get on with compiling process
+            gettimeofday(&tv, NULL);
+            sjtime t = ((sjtime) tv.tv_sec * 1000000LL) + (sjtime) tv.tv_usec;
+            return m_BaseTime + ( t - m_BaseTicks) * 1000LL;			// 1000LL - converts microseconds to milliseconds
 		#endif	
 
 		/*-- old code for linux, not as accurate as clock_gettime
@@ -317,9 +321,9 @@
 			nanosleep ( (long long) nsec );
 		#else
 		  timespec t;
-			t.tv_sec = int(msec / 1000);
-			t.tv_nsec = (msec - (t.tv_sec*1000)) * 1000000L;
-			nanosleep ( t );
+			t.tv_sec = int( nsec / 1000 ); // MP-TODO: looks like this should be nsec
+			t.tv_nsec = ( nsec - ( t.tv_sec*1000 ) ) * 1000000L; // MP-TODO: same
+			nanosleep ( &t, 0 ); // MP-TODO: should work
 		#endif
 	}
   

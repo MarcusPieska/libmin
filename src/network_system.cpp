@@ -51,22 +51,22 @@ void sleep_ms ( int time_ms ) {
 
 unsigned long get_read_ready_bytes ( SOCKET sock ) 
 {    
-		#ifdef _WIN32
-			// windows
-			unsigned long bytes_avail;
-			if ( ioctlsocket ( sock, FIONREAD, &bytes_avail) == -1 ) {
-					perror ( "ioctl FIONREAD" );
-					return -1; // Return -1 on error
-			}
-			return bytes_avail;
-		#else		
-		  int bytes;
-			if ( ioctl ( sock, FIONREAD, &bytes_avail ) == -1 ) {
-					perror ( "ioctl FIONREAD" );
-					return -1; // Return -1 on error
-			}
-			return (unsigned long) bytes_avail
-		#endif    
+	#ifdef _WIN32
+		// windows
+		unsigned long bytes_avail;
+		if ( ioctlsocket ( sock, FIONREAD, &bytes_avail) == -1 ) {
+			perror ( "ioctl FIONREAD" );
+			return -1; // Return -1 on error
+		}
+		return bytes_avail;
+	#else		
+	    int bytes_avail;
+		if ( ioctl ( sock, FIONREAD, &bytes_avail ) == -1 ) {
+			perror ( "ioctl FIONREAD" );
+			return -1; // Return -1 on error
+		}
+		return (unsigned long) bytes_avail;
+	#endif    
 }
 
 void make_sock_no_delay ( SOCKET sock ) 
@@ -1767,7 +1767,7 @@ int NetworkSystem::netError ( std::string msg, int error_id )
 			error_id = errno;								// linux error code
 		}
 		char buf[2048];
-		error_buf = (char*) strerror_r ( error_id, buf, 2048 );
+		char* error_buf = (char*) strerror_r ( error_id, buf, 2048 );
 		error_str = std::string(error_buf);
 	#endif	
 
