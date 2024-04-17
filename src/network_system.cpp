@@ -34,7 +34,7 @@ NetworkSystem* net;
 
 NetworkSystem::NetworkSystem ()
 {
-	mHostType = '    ';
+	mHostType = ' ';
 	mHostIP = 0;
 	mReadyServices = 0;
 	mUserEventCallback = 0;
@@ -263,7 +263,7 @@ void NetworkSystem::netStartServer ( netPort srv_port )
 {
 	// Start a TCP listen socket on Client
 	if (mbVerbose) dbgprintf ( "Start Server:\n");
-	mHostType = 'srv ';
+	mHostType = 's';
 	netIP srv_anyip = inet_addr ("0.0.0.0");
 
 	int srv_sock = netAddSocket ( NET_SRV, NET_TCP, NET_ENABLE, false, 
@@ -483,7 +483,7 @@ void NetworkSystem::netStartClient ( netPort cli_port, std::string srv_addr )
 {
 	// Network System is running in client mode
 	eventStr_t sys = 'net ';
-	mHostType = 'cli ';
+	mHostType = 'c';
 	if (mbVerbose) dbgprintf ( "Start Client:\n");
 
 	// Start a TCP listen socket on Client
@@ -795,7 +795,7 @@ int NetworkSystem::netTerminateSocket ( int sock, int force )
 	}
 	
 	// inform the app
-	if ( mHostType == 'srv ' ) {
+	if ( mHostType == 's' ) {
 		// server noticed - client terminated a socket
 		Event e = new_event(120, 'app ', 'cFIN', 0, mEventPool);
 		e.attachInt(sock);

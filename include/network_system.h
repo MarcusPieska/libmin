@@ -136,6 +136,8 @@
 		// Accessors
 		TimeX				getSysTime()		{ return TimeX::GetSystemNSec(); }
 		std::string	getHostName ()	{ return mHostName; }
+		bool				isServer()			{ return mHostType=='s'; }
+		bool				isClient()			{ return mHostType=='c'; }
 		netIP				getHostIP ()		{ return mHostIP; }
 		std::string getIPStr ( netIP ip );									// return IP as a string
 		netIP				getStrToIP ( std::string name );
@@ -155,11 +157,11 @@
 		
 		void netServerListenReturnSig( int sock );	
 
-		EventPool*					mEventPool;				// Event Memory Pool
-		EventQueue					mEventQueue;			// Network Event queue
+		EventPool*			mEventPool;				// Event Memory Pool
+		EventQueue			mEventQueue;			// Network Event queue
 
-		eventStr_t					mHostType;
-		std::string					mHostName;				// Host info
+		uchar						mHostType;
+		std::string			mHostName;				// Host info
 		netIP						mHostIP;
 		int							mReadyServices;
 
