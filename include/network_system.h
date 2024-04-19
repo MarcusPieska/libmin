@@ -192,6 +192,19 @@
     #elif __linux__
         fd_set				    sock_set;
     #endif
+	
+	private: 
+		unsigned long get_read_ready_bytes ( int sock );
+	
+		double get_time ( );
+	
+		void trace_setup ( const char* f );
+		void trace_enter ( const char* f );
+		void trace_exit ( const char* f );
+		
+		struct timespec mRefTime;
+		FILE* mTrace;
+		int mIndentCount;
 	};
 
 	extern NetworkSystem* net;
