@@ -36,7 +36,7 @@
     	#include <arpa/inet.h>
     #endif
 
-
+	#include <cstdio>
 	#include <map>
 
 	#define NET_NOT_CONNECTED		11002
@@ -78,8 +78,8 @@
 		void netInitialize ();
 		void netCreate ();
 		void netDestroy ();
-		void netDebug(bool v)		{ mbDebugNet = v; mbVerbose = v;  }
-		void netVerbose (bool v)	{ mbVerbose = v; }
+		void netDebug (bool v)		{ mPrintDebugNet = v; mPrintVerbose = v;  }
+		void netVerbose (bool v)	{ mPrintVerbose = v; }
 		void netPrint (bool verbose=false);
 		std::string netPrintAddr ( NetAddr adr );
 
@@ -182,8 +182,9 @@
 
 		// Debugging
 		int							mCheck;
-		bool						mbDebugNet;
-		bool						mbVerbose;
+		bool						mPrintDebugNet;
+		bool						mPrintVerbose;
+		bool						mPrintHandshake;
 
     #ifdef _WIN32
         struct fd_set			sock_set;
@@ -195,6 +196,21 @@
 	
 	private: 
 		unsigned long get_read_ready_bytes ( int sock );
+		void make_sock_no_delay ( int sock );
+		void make_sock_block ( int sock );
+		void make_sock_non_block ( int sock );
+		
+		template<typename... Args> 
+		void verbose_print ( const char* fmt, Args... args );
+		
+		template<typename... Args> 
+		void debug_print ( const char* fmt, Args... args );
+		
+		template<typename... Args> 
+		void handshake_print ( const char* fmt, Args... args );
+		
+		template<typename... Args> 
+		void verbose_debug_print ( const char* fmt, Args... args );
 	
 		double get_time ( );
 	
