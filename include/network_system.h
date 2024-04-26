@@ -87,17 +87,22 @@ public:
 	void netDebug ( bool v )	{ mPrintDebugNet = v; mPrintVerbose = v;  }
 	void netVerbose ( bool v )	{ mPrintVerbose = v; }
 	void netPrint ( bool verbose = false );
-	std::string netPrintAddr ( NetAddr adr );
+	str netPrintAddr ( NetAddr adr );
+	bool setPathToPublicKey ( str path );
+	bool setPathToPrivateKey ( str path );
+	bool setPathToCertDir ( str path );
+	bool setPathToCertFile ( str path );
+	
 
 	// Server - Network API
 	void netStartServer ( netPort srv_port );
 	void netServerListen ( int sock );
 
 	// Client - Network API
-	void netStartClient ( netPort srv_port, std::string srv_addr="127.0.0.1" );
-	int  netClientConnectToServer ( std::string srv_name, netPort srv_port, bool blocking = false );
-	int  netCloseConnection ( int localsock );
-	int  netCloseAll ( );
+	void netStartClient ( netPort srv_port, str srv_addr="127.0.0.1" );
+	int netClientConnectToServer ( str srv_name, netPort srv_port, bool blocking = false );
+	int netCloseConnection ( int localsock );
+	int netCloseAll ( );
 
 	// Event processing
 	void netProcessEvents ( Event& e );
@@ -106,13 +111,13 @@ public:
 	Event netMakeEvent ( eventStr_t name, eventStr_t sys );
 	bool netSend ( Event& e );
 	bool netSend ( Event& e, int mode, int sock );
-	bool netSendLiteral ( std::string str, int sock );
+	bool netSendLiteral ( str str, int sock );
 	void netQueueEvent ( Event& e ); // Place incoming event on recv queue
 	int netEventCallback ( Event& e ); // Processes network events (dispatch)
 	void netSetUserCallback ( funcEventHandler userfunc )	{ mUserEventCallback = userfunc; }
 	bool netIsConnectComplete ( int sock );
 	bool netCheckError ( int result, int sock );
-	int netError ( std::string msg, int error_id = 0 );
+	int netError ( str msg, int error_id = 0 );
 
 	// Sockets - abtract functions
 	int netAddSocket ( int side, int mode, int status, bool block, NetAddr src, NetAddr dest );
@@ -121,7 +126,7 @@ public:
 	int netFindOutgoingSocket ( bool bTcp );
 	int netTerminateSocket ( int sock_i, int force=0 );
 	NetSock& getSock ( int sock_i )			{ return mSockets[ sock_i ]; }
-	std::string getSocketIP ( int sock_i )	{ return getIPStr( mSockets[ sock_i ].dest.ipL ); }
+	str getSocketIP ( int sock_i )	{ return getIPStr( mSockets[ sock_i ].dest.ipL ); }
 
 	// Sockets - socket-specific low-level functions
 	void netStartSocketAPI ( );
@@ -135,19 +140,19 @@ public:
 	
 	bool netIsError ( int result );	// socket-specific error check
 	void netReportError ( int result );
-	std::string netPrintError ( int ret, std::string msg, SSL* sslsock=0x0 );
+	str netPrintError ( int ret, str msg, SSL* sslsock=0x0 );
 	int	netGetServerSocket ( int sock )	{ return ( sock >= mSockets.size ( ) ) ? -1 : mSockets[ sock ].dest.sock; }
 
 	bool netIsQueueEmpty() { return ( mEventQueue.size ( ) == 0 ); }
 
 	// Accessors
 	TimeX				getSysTime ( )		{ return TimeX::GetSystemNSec ( ); }
-	std::string			getHostName ( )		{ return mHostName; }
+	str					getHostName ( )		{ return mHostName; }
 	bool				isServer ( )		{ return mHostType == 's'; }
 	bool				isClient ( )		{ return mHostType == 'c'; }
 	netIP				getHostIP ( )		{ return mHostIP; }
-	std::string 		getIPStr ( netIP ip ); // return IP as a string
-	netIP				getStrToIP ( std::string name );
+	str 				getIPStr ( netIP ip ); // return IP as a string
+	netIP				getStrToIP ( str name );
 	int					getMaxPacketLen ( )	{ return mMaxPacketLen; }
 	EventPool*  getPool()					{ return mEventPool; }
 
@@ -187,7 +192,7 @@ public:
 	// Network buffers
 	int							mBufferLen;
 	char*						mBufferPtr;
-	char						mBuffer[NET_BUFSIZE];
+	char						mBuffer[ NET_BUFSIZE ];
 	int							mMaxPacketLen;
 
 	// Debugging
@@ -238,6 +243,10 @@ private:
 	struct timespec mRefTime;
 	FILE* mTrace;
 	int mIndentCount;
+	str mPathPublicKey;
+	str mPathPrivateKey;
+	str mPathCertDir;
+	str mPathCertFile;
 };
 
 extern NetworkSystem* net;

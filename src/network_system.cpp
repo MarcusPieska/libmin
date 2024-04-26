@@ -6,6 +6,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #include <assert.h>
+#include <filesystem>
 #include "network_system.h"
 
 #ifdef __linux__
@@ -196,7 +197,8 @@ inline void NetworkSystem::SOCK_MAKE_BLOCK ( SOCKET sock_h, bool block )
 		int flags = fcntl ( sock_h, F_GETFL, 0 );
 		if ( flags == -1 ) {
 			perror ( "get flags failed" );
-			exit ( EXIT_FAILURE );
+			return;
+			TRACE_EXIT ( (__func__) );
 		} else {
 			verbose_print ( "Call to get flags succeded" );
 		}
@@ -209,7 +211,6 @@ inline void NetworkSystem::SOCK_MAKE_BLOCK ( SOCKET sock_h, bool block )
 
 		if ( fcntl ( sock_h, F_SETFL, flags ) == -1 ) {
 			perror ( "set blocking option failed" );
-			exit( EXIT_FAILURE );
 		} else {
 			verbose_print ( "Call to set blocking succeded" );
 		}
@@ -428,6 +429,10 @@ NetworkSystem::NetworkSystem ()
 	mPrintDebugNet = true;
 	mPrintHandshake = true;
 	mTrace = 0;
+	mPathPublicKey = str("");
+	mPathPrivateKey = str("");
+	mPathCertDir = str("");
+	mPathCertFile = str("");
 }
 
 void NetworkSystem::sleep_ms ( int time_ms ) 
@@ -448,14 +453,15 @@ unsigned long NetworkSystem::get_read_ready_bytes ( SOCKET sock_h )
 
 void NetworkSystem::make_sock_no_delay ( SOCKET sock_h ) 
 {
+	TRACE_ENTER ( (__func__) );
 	int no_delay = 1;
 	if ( setsockopt ( sock_h, IPPROTO_TCP, TCP_NODELAY, (char *)&no_delay, sizeof ( no_delay ) ) < 0) {
 		perror( "Call to no delay FAILED" );
-		exit ( EXIT_FAILURE );
 	}  
 	else {
 		verbose_debug_print ( "Call to no delay succeded" );
 	} 
+	TRACE_EXIT ( (__func__) );
 } 
 
 void NetworkSystem::make_sock_block ( SOCKET sock_h )
@@ -528,13 +534,12 @@ int NetworkSystem::setupServerOpenssl ( int sock_i )
 		handshake_print ( "Call to set ssl option succeded" );
 	}
 
-	// specify CA veryify locations for trusted certs
-	if ( ( ret = SSL_CTX_set_default_verify_paths ( s.ctx ) ) <= 0 ) {
+	if ( ( ret = SSL_CTX_set_default_verify_paths ( s.ctx ) ) <= 0 ) { // Set CA veryify locations for trusted certs
 		netPrintError( ret, "Default verify paths failed" );
 	} else {
 		handshake_print ( "Call to default verify paths succeded" );
 	}
-	if ( ( ret = SSL_CTX_load_verify_locations ( s.ctx, "/etc/ssl/certs/ca-certificates.crt", "/etc/ssl/certs" ) ) <= 0) {
+	if ( ( ret = SSL_CTX_load_verify_locations ( s.ctx, mPathCertFile.c_str ( ) , mPathCertDir.c_str ( ) ) ) <= 0) {
 		netPrintError ( ret, "Load verify locations failed" );
 	} else {
 		handshake_print ( "Call to load verify locations succeded" );
@@ -542,18 +547,7 @@ int NetworkSystem::setupServerOpenssl ( int sock_i )
 
 	SSL_CTX_set_verify ( s.ctx, SSL_VERIFY_PEER, NULL );
 
-	// dbgprintf ( "  Cert file path: %s\n", ASSET_PATH );
-
-	// NOTE: For now the /assets path is hardcoded because libmin cannot know the 
-	// assets folder of the final app (eg. netdemo). This means the app must be
-	// run from the same working directory as the binary.
-	// Will be fixed once we have a netSetCertPath API function and let the app tell us.
-
-	// load server public & private keys
-	char fpath[2048];
-	sprintf ( fpath, "src/assets/server-server.pem" );
-
-	if ( ( ret = SSL_CTX_use_certificate_file ( s.ctx, fpath, SSL_FILETYPE_PEM ) ) <= 0 ) {
+	if ( ( ret = SSL_CTX_use_certificate_file ( s.ctx, mPathPublicKey.c_str ( ), SSL_FILETYPE_PEM ) ) <= 0 ) {
 		netPrintError ( ret, "Use certificate failed" );	
 		free_openssl ( sock_i ); 
 		TRACE_EXIT ( (__func__) );	
@@ -562,9 +556,7 @@ int NetworkSystem::setupServerOpenssl ( int sock_i )
 		handshake_print ( "Call to use certificate succeded" );
 	}
 
-	sprintf ( fpath, "src/assets/server.key" );
-
-	if ( ( ret = SSL_CTX_use_PrivateKey_file ( s.ctx, fpath, SSL_FILETYPE_PEM ) ) <= 0) {
+	if ( ( ret = SSL_CTX_use_PrivateKey_file ( s.ctx, mPathPrivateKey.c_str ( ), SSL_FILETYPE_PEM ) ) <= 0 ) {
 		netPrintError ( ret, "Use private key failed" );
 		free_openssl ( sock_i ); 
 		TRACE_EXIT ( (__func__) );
@@ -775,16 +767,16 @@ int NetworkSystem::setupClientOpenssl ( int sock_i )
 	NetSock& s = mSockets [ sock_i ];
 	make_sock_no_delay ( s.socket );
 	make_sock_non_block ( s.socket ); 
-	#if OPENSSL_VERSION_NUMBER < 0x10100000L // version 1.1
+	#if OPENSSL_VERSION_NUMBER < 0x10100000L // Version 1.1
 		SSL_load_error_strings();	 
 		SSL_library_init();
 	#else // version 3.0+
 		OPENSSL_init_ssl ( OPENSSL_INIT_LOAD_SSL_STRINGS, NULL );
 	#endif
 
-	dbgprintf ( "OpenSSL: %s\n", OPENSSL_VERSION_TEXT ); // openssl version 
+	dbgprintf ( "OpenSSL: %s\n", OPENSSL_VERSION_TEXT ); // Openssl version 
 
-	//s.bio = BIO_new_socket(s.socket, BIO_NOCLOSE);
+	//s.bio = BIO_new_socket ( s.socket, BIO_NOCLOSE );
 
 	s.ctx = SSL_CTX_new ( TLS_client_method ( ) );
 	if ( !s.ctx ) {
@@ -797,22 +789,12 @@ int NetworkSystem::setupClientOpenssl ( int sock_i )
 		handshake_print ( "Call to ctx succeded" );
 	}
 
-	//----- deprecated as of 1.1.0, use SSL_CTX_set_min_proto_version
-	/* exp = SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 | SSL_OP_NO_TLSv1;
-	if (((ret = SSL_CTX_set_options(s.ctx, exp)) & exp) != exp) {	
-		perror("set ssl option failed");
-		TRACE_EXIT ( (__func__) );
-		return 0;
-	} else {
-		handshake_print ( "Call to set ssl option succeded" );
-	} */
-
-	//-- use TLS 1.2+ only, since we have custom client-server protocols
+	// Use TLS 1.2+ only, since we have custom client-server protocols
 	SSL_CTX_set_min_proto_version ( s.ctx, TLS1_2_VERSION );
 	SSL_CTX_set_max_proto_version ( s.ctx, TLS1_3_VERSION );
 	SSL_CTX_set_verify ( s.ctx, SSL_VERIFY_PEER, NULL );
 
-	if ( !SSL_CTX_load_verify_locations( s.ctx, "src/assets/server-client.pem", NULL ) ) {
+	if ( !SSL_CTX_load_verify_locations( s.ctx, mPathPublicKey.c_str ( ), NULL ) ) {
 		perror ( "load verify locations failed" );
 		ERR_print_errors_fp ( stderr );
 		free_openssl ( sock_i );
@@ -1023,6 +1005,46 @@ int NetworkSystem::netClientConnectToServer (str srv_name, netPort srv_port, boo
 // -> CORE CODE <-
 //----------------------------------------------------------------------------------------------------------------------
 
+bool NetworkSystem::setPathToPublicKey ( str path )
+{
+	if ( ! std::filesystem::is_regular_file ( path ) ) {
+		debug_print ( "File path to public key is invalid: %s", path );
+		return false;
+	}
+	mPathPublicKey = path;
+	return true;
+}
+
+bool NetworkSystem::setPathToPrivateKey ( str path )
+{
+	if ( ! std::filesystem::is_regular_file ( path ) ) {
+		debug_print ( "File path to private key is invalid: %s", path );
+		return false;
+	}
+	mPathPrivateKey = path;
+	return true;
+}
+
+bool NetworkSystem::setPathToCertDir ( str path )
+{
+	if ( ! std::filesystem::is_directory ( path ) ) {
+		debug_print ( "Path to certificate folder is invalid: %s", path );
+		return false;
+	}
+	mPathCertDir = path;
+	return true;
+}
+
+bool NetworkSystem::setPathToCertFile ( str path )
+{
+	if ( ! std::filesystem::is_regular_file ( path ) ) {
+		debug_print ( "File path to certificate is invalid: %s", path );
+		return false;
+	}
+	mPathCertFile = path;
+	return true;
+}
+
 int NetworkSystem::netCloseAll ()
 {
 	TRACE_ENTER ( (__func__) );
@@ -1077,29 +1099,18 @@ void NetworkSystem::netProcessEvents ( Event& e )
 			// Get connection data from Event
 			netIP cli_ip = e.getInt64();
 			netPort cli_port = e.getInt64();
-			netIP srv_ip = e.getInt64();		// server given in Event payload
+			netIP srv_ip = e.getInt64(); // server given in Event payload
 			int srv_port = e.getInt64();
 			int srv_sock = e.getInt();
 
 			// Update client socket with server socket & client port
-			mSockets[cli_sock].status = NET_CONNECTED;		// mark connected
-			mSockets[cli_sock].dest.sock = srv_sock;		// assign server socket
-			mSockets[cli_sock].src.port = cli_port;			// assign client port from server
+			mSockets[cli_sock].status = NET_CONNECTED; // mark connected
+			mSockets[cli_sock].dest.sock = srv_sock; // assign server socket
+			mSockets[cli_sock].src.port = cli_port; // assign client port from server
 
 			// Verify client and server IPs
-			netIP srv_ip_chk = e.getSrcIP();		// source IP from the socket event came on
-			netIP cli_ip_chk = mSockets[cli_sock].src.ipL;	// original client IP
-
-			/*
-			if ( srv_ip != srv_ip_chk ) {	// srv IP from event. srvchk IP from packet origin
-				dbgprintf ( "NET ERROR: srv %s and srvchk %s IP mismatch.", getIPStr(srv_ip).c_str(), getIPStr(srv_ip_chk).c_str() );
-				exit(-1);
-			}
-			if ( cli_ip != cli_ip_chk ) {	// cli IP from event. clichk IP from original request
-				dbgprintf ( "NET ERROR: cli %s and clichk %s IP mismatch.", getIPStr(cli_ip).c_str(), getIPStr(cli_ip_chk).c_str() );
-				exit(-1);
-			}
-			*/
+			netIP srv_ip_chk = e.getSrcIP(); // source IP from the socket event came on
+			netIP cli_ip_chk = mSockets[cli_sock].src.ipL; // original client IP
 
 			// Inform the user-app (client) of the event
 			Event e = new_event ( 120, 'app ', 'sOkT', 0, mEventPool );
@@ -1350,7 +1361,6 @@ int NetworkSystem::netProcessQueue ( void )
 	return iOk;
 }
 
-// Receive Data
 int NetworkSystem::netRecieveData ()
 {
 	// TRACE_ENTER ( (__func__) );
@@ -1364,18 +1374,18 @@ int NetworkSystem::netRecieveData ()
 	int curr_socket;
 	int result, maxfd=-1;
 
-	// Get all sockets that are Enabled or Connected
-	redo_select:
+	
 	NET_PERF_PUSH ( "socklist" );
 	FD_ZERO ( &sock_set );
-	for ( int n = 0; n < (int) mSockets.size ( ); n++ ) {
-		if ( mSockets[ n ].status != NET_OFF && mSockets[ n ].status != NET_TERMINATED ) {		// look for NET_ENABLE or NET_CONNECT
-			if ( mSockets[ n ].security < 2 ) { // MP: this if-else has to be worked out
-				FD_SET (mSockets[ n ].socket, &sock_set);
-				if ( (int) mSockets[ n ].socket > maxfd ) maxfd = mSockets[n].socket;
+	for ( int n = 0; n < (int) mSockets.size ( ); n++ ) { // Get all sockets that are Enabled or Connected
+		NetSock& s = mSockets[ n ];
+		if ( s.status != NET_OFF && s.status != NET_TERMINATED ) { // look for NET_ENABLE or NET_CONNECT
+			if ( s.security < 2 ) { // MP: this if-else has to be worked out
+				FD_SET ( s.socket, &sock_set );
+				if ( (int) s.socket > maxfd ) maxfd = s.socket;
 			} else { 
 				#ifdef BUILD_OPENSSL
-					int fd = SSL_get_fd ( mSockets[ n ].ssl );
+					int fd = SSL_get_fd ( s.ssl );
 					FD_SET ( fd, &sock_set );	
 					if ( (int) fd > maxfd ) maxfd = fd;
 				#endif
@@ -1403,13 +1413,14 @@ int NetworkSystem::netRecieveData ()
 	NET_PERF_PUSH ( "findsock" );
 	curr_socket = 0; // Select ok. Find next updated socket
 	while ( curr_socket != (int) mSockets.size ( ) ) { 
-		if ( mSockets[ curr_socket ].security == NET_SECURITY_PLAIN_TCP || mSockets[ curr_socket ].status < NET_SSL_HS_NOT_STARTED ) { 
-			if ( FD_ISSET ( mSockets[curr_socket].socket, &sock_set ) ) {
+		NetSock& s = mSockets[ curr_socket ];
+		if ( s.security == NET_SECURITY_PLAIN_TCP || s.status < NET_SSL_HS_NOT_STARTED ) { 
+			if ( FD_ISSET ( s.socket, &sock_set ) ) {
 				break;
 			}
 		} else {
 			#ifdef BUILD_OPENSSL
-				int fd = SSL_get_fd( mSockets[curr_socket].ssl );
+				int fd = SSL_get_fd( s.ssl );
 				if ( FD_ISSET( fd, &sock_set ) ) {
 					break;
 				}
@@ -1902,12 +1913,9 @@ int NetworkSystem::netSocketAccept ( int sock_i, SOCKET& tcp_sock, netIP& cli_ip
 	return 1;
 }
 
-// socket recv()
-// return value: success=0, or an error in errno.h.
-// on success recvlen is set to bytes recieved
 int NetworkSystem::netSocketRecv ( int sock_i, char* buf, int buflen, int& recvlen )
 {
-	TRACE_ENTER ( (__func__) );
+	TRACE_ENTER ( (__func__) ); // Return value: success = 0, or an error number; on success recvlen = bytes recieved
 	socklen_t addr_size;
 	int result;
 	NetSock& s = mSockets [ sock_i ];
