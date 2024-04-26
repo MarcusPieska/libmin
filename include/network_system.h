@@ -112,7 +112,7 @@ public:
 	void netSetUserCallback ( funcEventHandler userfunc )	{ mUserEventCallback = userfunc; }
 	bool netIsConnectComplete ( int sock );
 	bool netCheckError ( int result, int sock );
-	int netError ( std::string msg, int error_id=0 );
+	int netError ( std::string msg, int error_id = 0 );
 
 	// Sockets - abtract functions
 	int netAddSocket ( int side, int mode, int status, bool block, NetAddr src, NetAddr dest );

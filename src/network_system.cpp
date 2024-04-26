@@ -424,9 +424,9 @@ NetworkSystem::NetworkSystem ()
 	mHostIP = 0;
 	mReadyServices = 0;
 	mUserEventCallback = 0;
-	mPrintVerbose = false;
-	mPrintDebugNet = false;
-	mPrintHandshake = false;
+	mPrintVerbose = true;
+	mPrintDebugNet = true;
+	mPrintHandshake = true;
 	mTrace = 0;
 }
 
@@ -507,8 +507,7 @@ int NetworkSystem::setupServerOpenssl ( int sock_i )
 	NetSock& s = mSockets [ sock_i ];
 	make_sock_no_delay ( s.socket );
 	int ret = 0, exp;
-	make_sock_non_block ( s.socket ); // MP: From what I can tell, socket is already non-blocking
-	//make_sock_block ( s.socket ); 
+	make_sock_non_block ( s.socket ); 
 
 	if ( ( s.ctx = SSL_CTX_new ( TLS_server_method () ) ) == 0 ) {
 		perror ( "get new ssl ctx failed" );
@@ -517,7 +516,7 @@ int NetworkSystem::setupServerOpenssl ( int sock_i )
 		return NET_SECURITY_FAIL;
 	}
 
-	dbgprintf ( "OpenSSL: %s", OPENSSL_VERSION_TEXT ); // openssl version 
+	dbgprintf ( "OpenSSL: %s\n", OPENSSL_VERSION_TEXT ); // openssl version 
 
 	exp = SSL_OP_SINGLE_DH_USE;
 	if (((ret = SSL_CTX_set_options( s.ctx, exp )) & exp) != exp ) {
@@ -584,7 +583,7 @@ int NetworkSystem::setupServerOpenssl ( int sock_i )
 		handshake_print ( "Call to set ssl fd succeded" );
 	}
 	TRACE_EXIT ( (__func__) );
-	return acceptServerOpenssl ( sock_i );
+	return NET_SSL_HS_STARTED;
 }
 	      
 int NetworkSystem::acceptServerOpenssl ( int sock_i ) 
@@ -595,9 +594,9 @@ int NetworkSystem::acceptServerOpenssl ( int sock_i )
 	if ( ( ret = SSL_accept ( s.ssl ) ) < 0 ) {
 		if ( checkOpensslError ( sock_i, ret ) ) {
 			handshake_print ( "Non-blocking call to ssl accept returned" );
-			handshake_print ( "Ready for safe transfer: ", SSL_is_init_finished ( s.ssl ) );
+			handshake_print ( "Ready for safe transfer: %d", SSL_is_init_finished ( s.ssl ) );
 			TRACE_EXIT ( (__func__) );
-			return 3;
+			return NET_SSL_HS_STARTED;
 		} else {	
 			netPrintError ( ret, "SSL_accept failed", s.ssl );
 			free_openssl ( sock_i ); 
@@ -611,9 +610,9 @@ int NetworkSystem::acceptServerOpenssl ( int sock_i )
 		return NET_SECURITY_FAIL; 
 	} 
 	handshake_print ( "Call to ssl accept succeded" );
-	handshake_print ( "Ready for safe transfer: ", SSL_is_init_finished ( s.ssl ) );
+	handshake_print ( "Ready for safe transfer: %d", SSL_is_init_finished ( s.ssl ) );
 	TRACE_EXIT ( (__func__) );
-	return 4;
+	return NET_SSL_HS_FINISHED;
 }
 	
 void NetworkSystem::checkServerOpensslHandshake ( int sock_i )
@@ -687,17 +686,12 @@ void NetworkSystem::netServerListen ( int sock )
 		netPrintError ( 0, "Unable to find server listen socket." );
 	}
 
-	// get server name & port;
 	str srv_name = mSockets[ srv_sock_svc ].src.name;
 	netPort srv_port = mSockets[ srv_sock_svc ].src.port;
-
 	netIP cli_ip = 0;
 	netPort cli_port = 0;
 
-	// Accept TCP on a service socket (open port)
-
-	SOCKET newSOCK;			// new literal socket
-
+	SOCKET newSOCK;	// new literal socket
 	int result = netSocketAccept ( srv_sock_svc, newSOCK, cli_ip, cli_port );
 	if ( result < 0 ) {
 		verbose_print ( "Connection not accepted." );
@@ -715,26 +709,31 @@ void NetworkSystem::netServerListen ( int sock )
 										NetAddr(NET_CONNECT, "", cli_ip, cli_port) );
 
 	NetSock& s = mSockets[ srv_sock_tcp ];
-
 	make_sock_non_block ( newSOCK );
-
-	s.socket = newSOCK;					// assign literal socket
-	s.dest.ipL = cli_ip;				// assign client IP
-	s.dest.port = cli_port;			// assign client port
-	s.status = NET_CONNECTED;		// connected
+	s.socket = newSOCK; // assign literal socket
+	s.dest.ipL = cli_ip; // assign client IP
+	s.dest.port = cli_port;	// assign client port
+	s.status = NET_ENABLE;
 
 	#ifdef BUILD_OPENSSL
-		if ( s.security == 1 ) { // MP: this should be the right spot; setup ssl if security is larger than zero
-			s.security = setupServerOpenssl( srv_sock_tcp );
-			if ( s.security == 0 ) 
-			{
-				netTerminateSocket ( srv_sock_tcp, 1 );
+		if ( s.security == NET_SECURITY_OPENSSL ) { 
+			if ( s.status < NET_SSL_HS_STARTED ) {
+				s.status = setupServerOpenssl ( srv_sock_tcp );
+				if ( s.status == NET_SECURITY_FAIL ) {
+					netTerminateSocket ( srv_sock_tcp, 1 );
+				} 
+			} 
+			if ( s.status == NET_SSL_HS_STARTED ) {
+				s.status = acceptServerOpenssl ( srv_sock_tcp );
+				if ( s.status == NET_SECURITY_FAIL ) {
+					netTerminateSocket ( srv_sock_tcp, 1 );
+				} 
 			}
 		}
 	#endif
-
-	// complete connection. both TCP/IP and SSL
-	if ( s.security == 4 || s.security == 0 ) {
+	
+	if ( s.status == NET_CONNECTED || s.security == NET_SECURITY_PLAIN_TCP ) { // Complete TCP or SSL connection
+		s.status = NET_CONNECTED; 
 		netServerListenReturnSig ( sock );
 	}
 	TRACE_EXIT ( (__func__) ); 	
@@ -792,7 +791,7 @@ int NetworkSystem::setupClientOpenssl ( int sock_i )
 		OPENSSL_init_ssl ( OPENSSL_INIT_LOAD_SSL_STRINGS, NULL );
 	#endif
 
-	dbgprintf ( "OpenSSL: %s", OPENSSL_VERSION_TEXT ); // openssl version 
+	dbgprintf ( "OpenSSL: %s\n", OPENSSL_VERSION_TEXT ); // openssl version 
 
 	//s.bio = BIO_new_socket(s.socket, BIO_NOCLOSE);
 
@@ -853,21 +852,20 @@ int NetworkSystem::setupClientOpenssl ( int sock_i )
 	}	
 
 	TRACE_EXIT ( (__func__) );
-	return connectClientOpenssl ( sock_i );
+	return NET_SSL_HS_STARTED;
 }	
 
 int NetworkSystem::connectClientOpenssl ( int sock_i )
 {
 	TRACE_ENTER ( (__func__) );
-	int ret=0, exp;
+	int ret = 0, exp;
 	NetSock& s = mSockets[ sock_i ];
-
 	if ( ( ret = SSL_connect ( s.ssl ) ) < 0 ) {
 		if ( checkOpensslError ( sock_i, ret ) ) {
 			handshake_print ( "Non-blocking call to ssl connect tentatively succeded" );
-			handshake_print ( "Ready for safe transfer: ", SSL_is_init_finished ( s.ssl ) );
+			handshake_print ( "Ready for safe transfer: %d", SSL_is_init_finished ( s.ssl ) );
 			TRACE_EXIT ( (__func__) );
-			return 2;
+			return NET_SSL_HS_STARTED;
 		} else {
 			netPrintError ( ret, "SSL_connect failed", s.ssl );	
 			free_openssl ( sock_i ); 	
@@ -882,9 +880,9 @@ int NetworkSystem::connectClientOpenssl ( int sock_i )
 	}
 
 	handshake_print ( "Call to ssl connect succeded" );
-	handshake_print ( "Ready for safe transfer: ", SSL_is_init_finished ( s.ssl ) );
+	handshake_print ( "Ready for safe transfer: %d", SSL_is_init_finished ( s.ssl ) );
 	TRACE_EXIT ( (__func__) );
-	return 4;	
+	return NET_SSL_HS_FINISHED;	
 }
 
 void NetworkSystem::checkClientOpensslHandshake ( int sock_i )
@@ -1026,18 +1024,20 @@ int NetworkSystem::netClientConnectToServer (str srv_name, netPort srv_port, boo
 	// SSL handshake
 	#ifdef BUILD_OPENSSL	
 		// MP: this should be the right spot; setup ssl if security is larger that zero
-		if ( mSockets[cli_sock_tcp].security == 1 ) {
-			mSockets[cli_sock_tcp].security = setupClientOpenssl ( cli_sock_tcp );
-			if ( mSockets[cli_sock_tcp].security == NET_SECURITY_FAIL ) 
-			{
-				netTerminateSocket ( cli_sock_tcp, 1 );
+		if ( mSockets[ cli_sock_tcp ].security == NET_SECURITY_OPENSSL ) {
+			if ( mSockets[ cli_sock_tcp ].status < NET_SSL_HS_FINISHED ) {
+				mSockets[ cli_sock_tcp ].status = setupClientOpenssl ( cli_sock_tcp );
+				if ( mSockets[ cli_sock_tcp ].status == NET_SECURITY_FAIL ) 
+				{
+					netTerminateSocket ( cli_sock_tcp, 1 );
+				}
 			}
-		}
-		if ( mSockets[cli_sock_tcp].security == 2 ) {
-			mSockets[cli_sock_tcp].security = connectClientOpenssl ( cli_sock_tcp );
-			if ( mSockets[cli_sock_tcp].security == NET_SECURITY_FAIL ) 
-			{
-				netTerminateSocket ( cli_sock_tcp, 1 );
+			if ( mSockets[ cli_sock_tcp ].status == NET_SSL_HS_STARTED ) {
+				mSockets[ cli_sock_tcp ].status = connectClientOpenssl ( cli_sock_tcp );
+				if ( mSockets[ cli_sock_tcp ].status == NET_SECURITY_FAIL ) 
+				{
+					netTerminateSocket ( cli_sock_tcp, 1 );
+				}
 			}
 		}
 	#endif
@@ -1182,7 +1182,8 @@ int NetworkSystem::netAddSocket ( int side, int mode, int status, bool block, Ne
 	s.timeout.tv_sec = 0; s.timeout.tv_usec = 0;
 	s.blocking = block;
 	s.broadcast = 1;
-	s.security = 1; 
+	//s.security = NET_SECURITY_PLAIN_TCP; 
+	s.security = NET_SECURITY_OPENSSL; 
 
 	s.ctx = 0;
 	s.ssl = 0;
@@ -1406,45 +1407,36 @@ int NetworkSystem::netRecieveData ()
 				if ( (int) mSockets[ n ].socket > maxfd ) maxfd = mSockets[n].socket;
 			} else { 
 				#ifdef BUILD_OPENSSL
-			    int fd = SSL_get_fd ( mSockets[ n ].ssl );
-			    FD_SET ( fd, &sock_set );	
-			    if ( (int) fd > maxfd ) maxfd = fd;
+					int fd = SSL_get_fd ( mSockets[ n ].ssl );
+					FD_SET ( fd, &sock_set );	
+					if ( (int) fd > maxfd ) maxfd = fd;
 				#endif
 			}
 		}
 	}
-
 	NET_PERF_POP ( );
+	
 	maxfd++;
 	if ( maxfd == 0 ) {
 		// TRACE_EXIT ( (__func__) );
-		return 0; // no sockets
+		return 0; // No sockets
 	}
-	//if ( sock_set.fd_count == 0 ) return 0;		// no sockets
 
-	// Select all sockets that have changed
 	NET_PERF_PUSH ( "select" );
-	result = select ( maxfd, &sock_set, NULL, NULL, &mSockets[0].timeout );
-
-
+	result = select ( maxfd, &sock_set, NULL, NULL, &mSockets[0].timeout ); // Select all sockets that have changed
 	NET_PERF_POP ( );
+	
 	if ( result < 0 ) {
-		// Select failed. Report net error
-		netReportError ( result );
+		netReportError ( result ); // Select failed. Report net error
 		// TRACE_EXIT ( (__func__) );
 		return 0;
 	}
 
-	// Select ok.
-	// Find next updated socket
 	NET_PERF_PUSH ( "findsock" );
-	curr_socket = 0;
-	//for (; curr_socket != (int) mSockets.size() && !FD_ISSET( mSockets[curr_socket].socket, &sock_set); ) {
-	//	curr_socket++;
-	//}
-	while ( curr_socket != (int) mSockets.size() ) { 
-		if ( mSockets[curr_socket].security < 2 ) { // MP: this if-else has to be worked out
-			if ( FD_ISSET( mSockets[curr_socket].socket, &sock_set ) ) {
+	curr_socket = 0; // Select ok. Find next updated socket
+	while ( curr_socket != (int) mSockets.size ( ) ) { 
+		if ( mSockets[ curr_socket ].security == NET_SECURITY_PLAIN_TCP || mSockets[ curr_socket ].status < NET_SSL_HS_NOT_STARTED ) { 
+			if ( FD_ISSET ( mSockets[curr_socket].socket, &sock_set ) ) {
 				break;
 			}
 		} else {
@@ -1457,60 +1449,55 @@ int NetworkSystem::netRecieveData ()
 		}		
 		curr_socket++;
 	}
-
 	NET_PERF_POP ( );
-
-	// Check on valid socket. Silent error if not.
-	if (curr_socket >= mSockets.size()) {
+	
+	if ( curr_socket >= mSockets.size ( ) ) { // Check on valid socket. Silent error if not.
 		// TRACE_EXIT ( (__func__) );
 		return 0;
 	}
-
-	// Listen for TCP connections on socket
-	if ( mSockets[curr_socket].src.type == NET_ANY ) {
+	if ( mSockets[curr_socket].src.type == NET_ANY ) { // Listen for TCP connections on socket
 		netServerListen ( curr_socket );
+		// TRACE_EXIT ( (__func__) );
+		return 0;
 	}
 
 	#ifdef BUILD_OPENSSL
-		if ( mSockets[ curr_socket ].security == 3 ) { // MP: new
-			mSockets[ curr_socket ].security = acceptServerOpenssl ( curr_socket );
-			if ( mSockets[ curr_socket ].security == 4 ) {
-				netServerListenReturnSig ( curr_socket );
-			} else if ( mSockets[ curr_socket ].security == NET_SECURITY_FAIL ) {
-				netTerminateSocket ( curr_socket, 1 );
+		if ( mSockets[ curr_socket ].security == NET_SECURITY_OPENSSL ) {
+			if ( mHostType == 's' && mSockets[ curr_socket ].status < NET_SSL_HS_FINISHED && curr_socket != 0 ) {
+				mSockets[ curr_socket ].status = acceptServerOpenssl ( curr_socket );
+				if ( mSockets[ curr_socket ].status == NET_SSL_HS_FINISHED ) {
+					mSockets[ curr_socket ].status = NET_CONNECTED;
+					netServerListenReturnSig ( curr_socket );
+				} else if ( mSockets[ curr_socket ].status == NET_SECURITY_FAIL ) {
+					netTerminateSocket ( curr_socket, 1 );
+				}
+				// TRACE_EXIT ( (__func__) );
+				return 0;
 			}
-			// TRACE_EXIT ( (__func__) );
-			return 0;
-		}
 
-		if ( mSockets[ curr_socket ].security == 2 ) { // MP: new
-			mSockets[ curr_socket ].security = connectClientOpenssl ( curr_socket );
-			if ( mSockets[ curr_socket ].security == NET_SECURITY_FAIL ) {
-				netTerminateSocket ( curr_socket, 1 );
+			if ( mHostType == 'c' && mSockets[ curr_socket ].status < NET_SSL_HS_FINISHED && curr_socket != 0 ) { 
+				mSockets[ curr_socket ].status = connectClientOpenssl ( curr_socket );
+				if ( mSockets[ curr_socket ].status == NET_SSL_HS_FINISHED ) {
+					// mSockets[ curr_socket ].status = NET_CONNECTED;
+				} else {
+					netTerminateSocket ( curr_socket, 1 );
+				}
+				// TRACE_EXIT ( (__func__) );
+				return 0;
 			}
-			// TRACE_EXIT ( (__func__) );
-			return 0;
 		}
 	#endif
 
-	// Receive incoming data on socket
-	NET_PERF_PUSH ( "recv" );
-	
+	NET_PERF_PUSH ( "recv" ); // Receive incoming data on socket
 	result = netSocketRecv ( curr_socket, mBuffer, NET_BUFSIZE-1, mBufferLen );
-	if ( result == SSL_ERROR_WANT_READ && mSockets[curr_socket].security > 1 ) { // MP: this is a little hacky
-	  //goto redo_select;	
-	}
 	if ( result != 0 || mBufferLen == 0 ) {
-		netReportError ( result );		// Recv failed. Report net error
+		netReportError ( result ); // Recv failed. Report net error
 		// TRACE_EXIT ( (__func__) );
 		return 0;
 	}
-
 	NET_PERF_POP ( );
 
-	// Data packet found. mBufferLen > 0
 	mBufferPtr = &mBuffer[0];
-
 	while ( mBufferLen > 0 ) {
 
 		if ( mEvent.isEmpty() ) {
@@ -1831,34 +1818,31 @@ bool NetworkSystem::netCheckError ( int result, int sock )
 	return true;
 }
 
-bool NetworkSystem::netSend ( Event& e, int mode, int sock )
+bool NetworkSystem::netSend ( Event& e, int mode, int sock_i )
 {
 	TRACE_ENTER ( (__func__) );
-	if ( sock == 0 ) {	// caller wishes to send on any outgoing socket
-		sock = netFindOutgoingSocket ( true );
-		if ( sock==-1 ) { 
+	if ( sock_i == 0 ) { // Caller wishes to send on any outgoing socket
+		sock_i = netFindOutgoingSocket ( true );
+		if ( sock_i == -1 ) { 
 			TRACE_EXIT ( (__func__) );
 			return false;
 		}
 	}
 	int result, error;
 	e.rescope ( "nets" );
-
 	if ( e.mData == 0x0 ) { 
 		TRACE_EXIT ( (__func__) );
 		return false;
 	}
 
-	// prepare serialized buffer
-	e.serialize ( );
+	e.serialize ( ); // Prepare serialized buffer
 	char* buf = e.getSerializedData ( );
 	int len = e.getSerializedLength ( );
 	verbose_debug_print ( "send: %d bytes, %s", e.getSerializedLength ( ), e.getNameStr ( ).c_str ( ) );
 
-	// send over socket
-	NetSock& s = mSockets[sock];
-	if ( mSockets[sock].mode==NET_TCP ) {
-		if ( s.security < 2 ) {
+	NetSock& s = mSockets[ sock_i ];
+	if ( mSockets[ sock_i ].mode == NET_TCP ) { // Send over socket
+		if ( s.security == NET_SECURITY_PLAIN_TCP || s.status < NET_SSL_HS_NOT_STARTED ) {
 			result = send ( s.socket, buf, len, 0 ); // TCP/IP
 		} else {
 			#ifdef BUILD_OPENSSL
@@ -1873,12 +1857,11 @@ bool NetworkSystem::netSend ( Event& e, int mode, int sock )
 			#endif
 		}  
 	} else {
-		int addr_size = sizeof( mSockets[ sock ].dest.addr );
-		result = sendto ( s.socket, buf, len, 0, (sockaddr*) &s.dest.addr, addr_size); // UDP
+		int addr_size = sizeof( mSockets[ sock_i ].dest.addr );
+		result = sendto ( s.socket, buf, len, 0, (sockaddr*) &s.dest.addr, addr_size ); // UDP
 	}
-	// check connection
 	TRACE_EXIT ( (__func__) );
-	return netCheckError ( result, sock );
+	return netCheckError ( result, sock_i ); // Check connection
 }
 
 int NetworkSystem::netUpdateSocket ( int sock_i )
@@ -1978,18 +1961,20 @@ int NetworkSystem::netSocketRecv ( int sock_i, char* buf, int buflen, int& recvl
 	NetSock& s = mSockets [ sock_i ];
 	if ( s.src.type != NET_CONNECT ) {
 		TRACE_EXIT ( (__func__) );
-		return 0; // recv only on connection sockets
+		return 0; // Only recv on connection sockets
 	}
 	
 	addr_size = sizeof ( s.src.addr );
 	if ( s.mode == NET_TCP ) {
-		if ( s.security < 2 ) { // MP: on the else here is where the current issue is
+		if ( s.security == NET_SECURITY_PLAIN_TCP || s.status < NET_SSL_HS_NOT_STARTED ) { 
 			result = recv ( s.socket, buf, buflen, 0 );	// TCP/IP
 		} else {
 			#ifdef BUILD_OPENSSL
 				result = SSL_read( s.ssl, buf, buflen );
 				if ( result <= 0 ) {	
-					if ( SSL_get_error ( s.ssl, result ) == SSL_ERROR_WANT_READ ) {
+					int ssl_error = SSL_get_error ( s.ssl, result );
+					ERR_print_errors_fp ( stdout );
+					if ( ssl_error == SSL_ERROR_WANT_READ || ssl_error == SSL_ERROR_WANT_WRITE ) {
 						TRACE_EXIT ( (__func__) );
 						return SSL_ERROR_WANT_READ;
 					}
@@ -2000,12 +1985,12 @@ int NetworkSystem::netSocketRecv ( int sock_i, char* buf, int buflen, int& recvl
 		result = recvfrom ( s.socket, buf, buflen, 0, (sockaddr*) &s.src.addr, &addr_size ); // UDP
 	}
 	if ( result == 0 ) {
-		netTerminateSocket ( sock_i ); // peer has unexpected shutdown
-		netError ( "Unexpected shutdown");
+		netTerminateSocket ( sock_i ); // Peer has unexpected shutdown
+		netError ( "Unexpected shutdown", result );
 		TRACE_EXIT ( (__func__) );
 		return ECONNREFUSED;
 	}	
-	netCheckError ( result, sock_i ); // check connection
+	netCheckError ( result, sock_i ); // Check connection
 	recvlen = result;
 	TRACE_EXIT ( (__func__) );
 	return 0;
