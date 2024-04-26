@@ -155,10 +155,14 @@ public:
 	#ifdef BUILD_OPENSSL
 		void free_openssl ( int sock_i ); 
 		int checkOpensslError ( int sock_i, int ret ); 
+		
 		int setupServerOpenssl ( int sock_i ); 
 		int acceptServerOpenssl ( int sock_i );
+		void checkServerOpensslHandshake ( int sock_i );
+		
 		int setupClientOpenssl ( int sock_i ); 
-		int connectClientOpenssl ( int sock_i );			
+		int connectClientOpenssl ( int sock_i );	
+		void checkClientOpensslHandshake ( int sock_i );	
     #endif
 	
 	void netServerListenReturnSig ( int sock_i );	
@@ -213,9 +217,11 @@ private:
 	template<typename... Args> void handshake_print ( const char* fmt, Args... args );
 	template<typename... Args> void verbose_debug_print ( const char* fmt, Args... args );
 	double get_time ( );
-	void trace_setup ( const char* f );
-	void trace_enter ( const char* f );
-	void trace_exit ( const char* f );
+	void trace_setup ( const char* function_name );
+	void trace_enter ( const char* function_name );
+	void trace_exit ( const char* function_name );
+	void net_perf_push ( const char* msg );
+	void net_perf_pop ( );
 	
 	// Cross-platform socket interactions
 	void SET_HOSTNAME ( );

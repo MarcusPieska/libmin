@@ -49,20 +49,31 @@
 
 	#include "event_system.h"
 
-	#define NET_ERR				-1
-	#define NET_CLI				0				// sides
-	#define	NET_SRV				1	
-	#define NET_TCP				0				// modes
-	#define NET_UDP				1	
-	#define NET_ANY				0				// types
-	#define NET_BROADCAST		1		
-	#define NET_SEARCH			2	
-	#define NET_CONNECT			3	
+	#define NET_ERR						-1
+	
+	#define NET_CLI						0 // sides
+	#define	NET_SRV						1	
+	
+	#define NET_TCP						0 // modes
+	#define NET_UDP						1	
+	
+	#define NET_SECURITY_FAIL			-1 // security types
+	#define NET_SECURITY_PLAIN_TCP		0
+	#define NET_SECURITY_OPENSSL		1
+	#define NET_SECURITY_DTLS			2
+	
+	#define NET_ANY						0 // types
+	#define NET_BROADCAST				1		
+	#define NET_SEARCH					2	
+	#define NET_CONNECT					3	
 
-	#define NET_OFF				4				// stats
-	#define NET_ENABLE			5
-	#define NET_CONNECTED		6
-	#define NET_TERMINATED		7
+	#define NET_OFF						4 // stats
+	#define NET_ENABLE					5
+	#define NET_SSL_HS_NOT_STARTED		6
+	#define NET_SSL_HS_STARTED			7
+	#define NET_SSL_HS_FINISHED			8
+	#define NET_CONNECTED				9
+	#define NET_TERMINATED				10
 	
 
 	// Network Address Abstraction
