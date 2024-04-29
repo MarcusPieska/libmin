@@ -107,7 +107,9 @@ public:
 	// Event processing
 	void netProcessEvents ( Event& e );
 	int netProcessQueue ( void );
-	int netRecieveData ( );
+	int netRecieveSelect ( );
+	int netRecieveAllData ( );
+	int netRecieveData ( int sock_i );
 	Event netMakeEvent ( eventStr_t name, eventStr_t sys );
 	bool netSend ( Event& e );
 	bool netSend ( Event& e, int mode, int sock );
@@ -179,6 +181,7 @@ public:
 	str							mHostName; // Host info
 	netIP						mHostIP;
 	int							mReadyServices;
+	timeval						mRcvSelectTimout;
 
 	std::vector< NetSock >		mSockets; // Socket list
 
@@ -202,11 +205,11 @@ public:
 	bool						mPrintHandshake;
 
 	#ifdef _WIN32
-		struct fd_set			sock_set;
+		struct fd_set			mSockSet;
 	#elif __ANDROID__
-		fd_set				    sock_set;
+		fd_set				    mSockSet;
 	#elif __linux__
-		fd_set				    sock_set;
+		fd_set				    mSockSet;
 	#endif
 
 private: 

@@ -433,6 +433,8 @@ NetworkSystem::NetworkSystem ()
 	mPathPrivateKey = str("");
 	mPathCertDir = str("");
 	mPathCertFile = str("");
+	mRcvSelectTimout.tv_sec = 0;
+	mRcvSelectTimout.tv_usec = 1e5;
 }
 
 void NetworkSystem::sleep_ms ( int time_ms ) 
@@ -522,7 +524,7 @@ int NetworkSystem::setupServerOpenssl ( int sock_i )
 		return NET_SECURITY_FAIL;
 	}
 
-	dbgprintf ( "OpenSSL: %s\n", OPENSSL_VERSION_TEXT ); // openssl version 
+	dbgprintf ( "OpenSSL: %s\n", OPENSSL_VERSION_TEXT ); // Openssl version 
 
 	exp = SSL_OP_SINGLE_DH_USE;
 	if (((ret = SSL_CTX_set_options( s.ctx, exp )) & exp) != exp ) {
@@ -1158,7 +1160,8 @@ int NetworkSystem::netAddSocket ( int side, int mode, int status, bool block, Ne
 	s.src = src;
 	s.dest = dest;
 	s.socket = 0;
-	s.timeout.tv_sec = 0; s.timeout.tv_usec = 0;
+	s.timeout.tv_sec = 0; 
+	s.timeout.tv_usec = 0;
 	s.blocking = block;
 	s.broadcast = 1;
 	//s.security = NET_SECURITY_PLAIN_TCP; 
@@ -1336,57 +1339,57 @@ str NetworkSystem::netPrintError ( int ret, str msg, SSL* sslsock )
 	}
 #endif
 
-// Process Queue
+//----------------------------------------------------------------------------------------------------------------------
+// -> PRIMARY ENTRY POINT <-
+//----------------------------------------------------------------------------------------------------------------------
+
 int NetworkSystem::netProcessQueue ( void )
 {
-	// TRACE_ENTER ( (__func__) );
-	// Recieve incoming data	
-	NET_PERF_PUSH ( "netRecv" );
-	netRecieveData ( );
-	NET_PERF_POP();
-
-	// Handle incoming events on queue
-	int iOk = 0;
-
+	// TRACE_ENTER ( (__func__) );	
+	if ( netRecieveSelect ( ) ) {
+		NET_PERF_PUSH ( "netRecv" );
+		netRecieveAllData ( ); // Recieve incoming data
+		NET_PERF_POP ( );
+	}
+	
+	int iOk = 0; // Handle incoming events on queue
 	Event e;
-
 	while ( mEventQueue.size() > 0 ) {
-		e = mEventQueue.front ();
-		e.startRead ();
-		iOk += netEventCallback ( e );	// count each user event handled ok
-		mEventQueue.pop ();				// pop causes event & payload deletion!
+		e = mEventQueue.front ( );
+		e.startRead ( );
+		iOk += netEventCallback ( e ); // Count each user event handled ok
+		mEventQueue.pop ( ); // Pop causes event & payload deletion!
 		e.bOwn = false;
 	}
 	// TRACE_EXIT ( (__func__) );
 	return iOk;
 }
 
-int NetworkSystem::netRecieveData ()
+//----------------------------------------------------------------------------------------------------------------------
+// -> RECIEVE CODE <-
+//----------------------------------------------------------------------------------------------------------------------
+
+int NetworkSystem::netRecieveSelect ( ) 
 {
-	// TRACE_ENTER ( (__func__) );
-	if ( mSockets.size() == 0 ) {
-		// TRACE_EXIT ( (__func__) );
+	TRACE_ENTER ( (__func__) );
+	if ( mSockets.size ( ) == 0 ) {
+		TRACE_EXIT ( (__func__) );
 		return 0;
 	}
 
-	bool bDeserial;
-	int event_alloc;
-	int curr_socket;
-	int result, maxfd=-1;
-
-	
+	int result, maxfd =- 1;
 	NET_PERF_PUSH ( "socklist" );
-	FD_ZERO ( &sock_set );
+	FD_ZERO ( &mSockSet );
 	for ( int n = 0; n < (int) mSockets.size ( ); n++ ) { // Get all sockets that are Enabled or Connected
 		NetSock& s = mSockets[ n ];
 		if ( s.status != NET_OFF && s.status != NET_TERMINATED ) { // look for NET_ENABLE or NET_CONNECT
 			if ( s.security < 2 ) { // MP: this if-else has to be worked out
-				FD_SET ( s.socket, &sock_set );
+				FD_SET ( s.socket, &mSockSet );
 				if ( (int) s.socket > maxfd ) maxfd = s.socket;
 			} else { 
 				#ifdef BUILD_OPENSSL
 					int fd = SSL_get_fd ( s.ssl );
-					FD_SET ( fd, &sock_set );	
+					FD_SET ( fd, &mSockSet );	
 					if ( (int) fd > maxfd ) maxfd = fd;
 				#endif
 			}
@@ -1394,79 +1397,91 @@ int NetworkSystem::netRecieveData ()
 	}
 	NET_PERF_POP ( );
 	
-	maxfd++;
-	if ( maxfd == 0 ) {
-		// TRACE_EXIT ( (__func__) );
+	if ( ++maxfd == 0 ) {
+		TRACE_EXIT ( (__func__) );
 		return 0; // No sockets
 	}
 
 	NET_PERF_PUSH ( "select" );
-	result = select ( maxfd, &sock_set, NULL, NULL, &mSockets[0].timeout ); // Select all sockets that have changed
+	timeval tv;
+    tv.tv_sec = mRcvSelectTimout.tv_sec;
+	tv.tv_usec = mRcvSelectTimout.tv_usec;
+	result = select ( maxfd, &mSockSet, NULL, NULL, &tv ); // Select all sockets that have changed
 	NET_PERF_POP ( );
-	
-	if ( result < 0 ) {
-		netReportError ( result ); // Select failed. Report net error
-		// TRACE_EXIT ( (__func__) );
+	TRACE_EXIT ( (__func__) );
+	return result;
+}
+
+int NetworkSystem::netRecieveAllData ( )
+{
+	TRACE_ENTER ( (__func__) );
+	if ( mSockets.size() == 0 ) {
+		TRACE_EXIT ( (__func__) );
 		return 0;
 	}
-
+	int result, sock_i = 0;
 	NET_PERF_PUSH ( "findsock" );
-	curr_socket = 0; // Select ok. Find next updated socket
-	while ( curr_socket != (int) mSockets.size ( ) ) { 
-		NetSock& s = mSockets[ curr_socket ];
+	while ( sock_i != (int) mSockets.size ( ) ) { 
+		NetSock& s = mSockets[ sock_i ];
 		if ( s.security == NET_SECURITY_PLAIN_TCP || s.status < NET_SSL_HS_NOT_STARTED ) { 
-			if ( FD_ISSET ( s.socket, &sock_set ) ) {
-				break;
+			if ( FD_ISSET ( s.socket, &mSockSet ) ) {
+				netRecieveData ( sock_i );
 			}
 		} else {
 			#ifdef BUILD_OPENSSL
-				int fd = SSL_get_fd( s.ssl );
-				if ( FD_ISSET( fd, &sock_set ) ) {
-					break;
+				int fd = SSL_get_fd ( s.ssl );
+				if ( FD_ISSET ( fd, &mSockSet ) ) {
+					netRecieveData ( sock_i );
 				}
 			#endif
 		}		
-		curr_socket++;
+		sock_i++;
 	}
 	NET_PERF_POP ( );
-	
-	if ( curr_socket >= mSockets.size ( ) ) { // Check on valid socket. Silent error if not.
-		// TRACE_EXIT ( (__func__) );
+	TRACE_EXIT ( (__func__) );
+}
+
+int NetworkSystem::netRecieveData ( int sock_i )
+{
+	TRACE_ENTER ( (__func__) );
+	if ( sock_i >= mSockets.size ( ) ) { // Check on valid socket. Silent error if not.
+		TRACE_EXIT ( (__func__) );
 		return 0;
 	}
-	if ( mSockets[ curr_socket ].src.type == NET_ANY ) { // Listen for TCP connections on socket
-		netServerListen ( curr_socket );
-		// TRACE_EXIT ( (__func__) );
+	if ( mSockets[ sock_i ].src.type == NET_ANY ) { // Listen for TCP connections on socket
+		netServerListen ( sock_i );
+		TRACE_EXIT ( (__func__) );
 		return 0;
 	}
-	NetSock& s = mSockets[ curr_socket ];
-	if ( s.security == NET_SECURITY_OPENSSL && s.status < NET_SSL_HS_FINISHED && curr_socket != 0 ) {
+	NetSock& s = mSockets[ sock_i ];
+	if ( s.security == NET_SECURITY_OPENSSL && s.status < NET_SSL_HS_FINISHED && sock_i != 0 ) {
 		if ( mHostType == 's' ) {
-			checkServerOpensslHandshake ( curr_socket );
+			checkServerOpensslHandshake ( sock_i );
 		}
 		if ( mHostType == 'c' ) { 
-			checkClientOpensslHandshake ( curr_socket );
+			checkClientOpensslHandshake ( sock_i );
 		}
-		// TRACE_EXIT ( (__func__) );
+		TRACE_EXIT ( (__func__) );
 		return 0;
 	}
 
 	NET_PERF_PUSH ( "recv" ); // Receive incoming data on socket
-	result = netSocketRecv ( curr_socket, mBuffer, NET_BUFSIZE-1, mBufferLen );
+	int result = netSocketRecv ( sock_i, mBuffer, NET_BUFSIZE-1, mBufferLen );
 	if ( result != 0 || mBufferLen == 0 ) {
 		netReportError ( result ); // Recv failed. Report net error
-		// TRACE_EXIT ( (__func__) );
+		TRACE_EXIT ( (__func__) );
 		return 0;
 	}
 	NET_PERF_POP ( );
 
-	mBufferPtr = &mBuffer[0];
+	mBufferPtr = &mBuffer[ 0 ];
+	bool bDeserial;
 	while ( mBufferLen > 0 ) {
 
 		if ( mEvent.isEmpty() ) {
 
 			// Check the type of incoming socket
-			if (mSockets[curr_socket].blocking) {
+			if (mSockets[ sock_i ].blocking) {
 
 				// Blocking socket. NOT an Event socket.
 				// Attach arbitrary data onto a new event.
@@ -1499,8 +1514,8 @@ int NetworkSystem::netRecieveData ()
 				mEvent.deserialize(mBufferPtr, imin(mEventLen, mBufferLen));	// Deserialize header
 				NET_PERF_POP ( );
 			}
-			mEvent.setSrcSock(curr_socket);		// <--- tag event /w socket
-			mEvent.setSrcIP(mSockets[curr_socket].src.ipL); // recover sender address from socket
+			mEvent.setSrcSock( sock_i );		// <--- tag event /w socket
+			mEvent.setSrcIP(mSockets[ sock_i ].src.ipL); // recover sender address from socket
 			bDeserial = true;
 
 		} else {
@@ -1558,7 +1573,7 @@ int NetworkSystem::netRecieveData ()
 		}
 	}	// end while
 	
-	// TRACE_EXIT ( (__func__) );
+	TRACE_EXIT ( (__func__) );
 	return mBufferLen;
 }
 
@@ -1720,7 +1735,7 @@ void NetworkSystem::netPrint ( bool verbose )
 void NetworkSystem::netStartSocketAPI ( )
 {
 	TRACE_ENTER ( (__func__) );
-	FD_ZERO ( &sock_set );
+	FD_ZERO ( &mSockSet );
 	SOCK_API_INIT ( );
 	TRACE_EXIT ( (__func__) );
 }
