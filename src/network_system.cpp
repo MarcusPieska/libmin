@@ -417,8 +417,6 @@ template<typename... Args> void NetworkSystem::verbose_debug_print ( const char*
 // -> MAIN CODE <-
 //----------------------------------------------------------------------------------------------------------------------
 
-NetworkSystem* net;
-
 NetworkSystem::NetworkSystem ()
 {
 	mHostType = ' ';
@@ -426,7 +424,7 @@ NetworkSystem::NetworkSystem ()
 	mReadyServices = 0;
 	mUserEventCallback = 0;
 	mRcvSelectTimout.tv_sec = 0;
-	mRcvSelectTimout.tv_usec = 1e5;
+	mRcvSelectTimout.tv_usec = 1e3;
 	
 	mSecurity = NET_SECURITY_PLAIN_TCP;
 	mTcpFallbackAllowed = true;
@@ -636,8 +634,7 @@ void NetworkSystem::checkServerOpensslHandshake ( int sock_i )
 				s.security = NET_SECURITY_FAIL;
 				netTerminateSocket ( sock_i, 1 );
 			} else if ( s.status == NET_SSL_HS_FINISHED ) {
-				s.status = NET_CONNECTED;
-				netServerListenReturnSig ( sock_i );
+				netServerCompleteConnection ( sock_i );
 			}
 		}
 	}
@@ -672,15 +669,14 @@ void NetworkSystem::netStartServer ( netPort srv_port )
 	handshake_print ( "Start Server:" );
 	mHostType = 's';
 	netIP srv_anyip = inet_addr ("0.0.0.0");
-
-	int srv_sock = netAddSocket ( NET_SRV, NET_TCP, NET_ENABLE, false, 
-									NetAddr(NET_ANY, mHostName, srv_anyip, srv_port),
-		                            NetAddr(NET_BROADCAST, "", 0, srv_port ) );
-
+	
+	NetAddr addr1 ( NET_ANY, mHostName, srv_anyip, srv_port );
+	NetAddr addr2 ( NET_BROADCAST, "", 0, srv_port );
+	int srv_sock = netAddSocket ( NET_SRV, NET_TCP, NET_ENABLE, false, addr1, addr2 );
 	const char reuse = 1;
-	if ( setsockopt( mSockets[srv_sock].socket, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(int)) < 0)		
+	if ( setsockopt( mSockets[srv_sock].socket, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(int)) < 0)	{	
 		handshake_print ( "netSys Error: Setting server socket as SO_REUSEADDR." );
-
+	}
 	netSocketBind ( srv_sock );
 	netSocketListen ( srv_sock );	
 	TRACE_EXIT ( (__func__) );
@@ -723,13 +719,12 @@ void NetworkSystem::netServerListen ( int sock_i )
 		checkServerOpensslHandshake ( srv_sock_tcp );
 	} 
 	else if ( s.security == NET_SECURITY_PLAIN_TCP ) { // Complete TCP or SSL connection
-		s.status = NET_CONNECTED; 
-		netServerListenReturnSig ( sock_i );
+		netServerCompleteConnection ( srv_sock_tcp );
 	}
 	TRACE_EXIT ( (__func__) ); 	
 } 
 	
-void NetworkSystem::netServerListenReturnSig ( int sock_i )
+void NetworkSystem::netServerCompleteConnection ( int sock_i )
 {
 	TRACE_ENTER ( (__func__) );
 	int srv_sock_svc = netFindSocket ( NET_SRV, NET_TCP, NET_ANY );
@@ -738,16 +733,16 @@ void NetworkSystem::netServerListenReturnSig ( int sock_i )
 	}
 	netPort srv_port = mSockets[ srv_sock_svc ].src.port;
 	NetSock& s = mSockets [ sock_i ];
+	s.status = NET_CONNECTED; 
 
-	// Send TCP connected event to client
-	Event e;
+	Event e; 
 	e = netMakeEvent ( 'sOkT', 0 );
-	e.attachInt64 ( s.dest.ipL ); // client IP
-	e.attachInt64 ( s.dest.port ); // client port assigned by server!
-	e.attachInt64 ( mHostIP ); // server IP
-	e.attachInt64 ( srv_port ); // server port
-	e.attachInt ( sock_i ); // connection ID (goes back to the client)
-	netSend ( e, NET_CONNECT, sock_i );
+	e.attachInt64 ( s.dest.ipL ); // Client IP
+	e.attachInt64 ( s.dest.port ); // Client port assigned by server!
+	e.attachInt64 ( mHostIP ); // Server IP
+	e.attachInt64 ( srv_port ); // Server port
+	e.attachInt ( sock_i ); // Connection ID (goes back to the client)
+	netSend ( e, NET_CONNECT, sock_i ); // Send TCP connected event to client
 
 	// Inform the user-app (server) of the event
 	Event ue = new_event ( 120, 'app ', 'sOkT', 0, mEventPool );	
@@ -914,23 +909,20 @@ void NetworkSystem::netStartClient ( netPort cli_port, str srv_addr )
 	}
 	
 	TRACE_ENTER ( (__func__) );
-	// Network System is running in client mode
-	eventStr_t sys = 'net ';
-	mHostType = 'c';
+	eventStr_t sys = 'net '; 
+	mHostType = 'c'; // Network System is running in client mode
 	verbose_print ( "Start Client:" );
 
-	// Start a TCP listen socket on Client
-	struct HELPAPI NetAddr netAddr = NetAddr();
+	struct HELPAPI NetAddr netAddr = NetAddr ( ); // Start a TCP listen socket on Client
 	netAddr.convertIP ( ntohl ( inet_addr ( srv_addr.c_str ( ) ) ) );
-	netAddr.ipL = inet_addr( srv_addr.c_str ( ) );
+	netAddr.ipL = inet_addr ( srv_addr.c_str ( ) );
 	netAddSocket ( NET_CLI, NET_TCP, NET_OFF, false, NetAddr ( NET_ANY, mHostName, mHostIP, cli_port ), netAddr );
 	TRACE_EXIT ( (__func__) );
 }
 
-int NetworkSystem::netClientConnectToServer (str srv_name, netPort srv_port, bool blocking )
+int NetworkSystem::netClientConnectToServer ( str srv_name, netPort srv_port, bool blocking )
 {
 	TRACE_ENTER ( (__func__) );
-	NetSock cs;
 	str cli_name;
 	netIP cli_ip, srv_ip;
 	int cli_port, cli_sock_svc, cli_sock_tcp, cli_sock;
@@ -971,10 +963,9 @@ int NetworkSystem::netClientConnectToServer (str srv_name, netPort srv_port, boo
 	}
 
 	cli_sock_svc = netFindSocket ( NET_CLI, NET_TCP, NET_ANY ); // Find a local TCP socket service
-	cs = getSock ( cli_sock_svc );
-	cli_name = cs.src.name;
+	cli_name = mSockets[ cli_sock_svc ].src.name;
+	cli_port = mSockets[ cli_sock_svc ].src.port;
 	cli_ip = mHostIP;
-	cli_port = cs.src.port;
 
 	NetAddr srv_addr = NetAddr ( NET_CONNECT, srv_name, srv_ip, srv_port ); // Find or create socket
 	cli_sock_tcp = netFindSocket ( NET_CLI, NET_TCP, srv_addr );
@@ -992,10 +983,13 @@ int NetworkSystem::netClientConnectToServer (str srv_name, netPort srv_port, boo
 	if ( setsockopt( s.socket, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(int) ) < 0 ) {
 		verbose_print ( "netSys: Setting server socket as SO_REUSEADDR." );
 	}
-	if ( s.status != NET_CONNECTED ) { // Try to connect	if needed
+	if ( s.status != NET_CONNECTED ) { // Try to connect if needed
 		int result = netSocketConnect ( cli_sock_tcp );
 		if (result !=0 ) netReportError ( result );
-	}  
+	} 
+    if ( s.security == NET_SECURITY_FAIL && s.tcpFallback ) {
+		s.security = NET_SECURITY_PLAIN_TCP; // MP: Revisit this; it should be done elsewhere
+	}
 	if ( s.security == NET_SECURITY_OPENSSL ) { // SSL handshake
 		checkClientOpensslHandshake ( cli_sock_tcp );
 	}
@@ -1010,6 +1004,23 @@ int NetworkSystem::netClientConnectToServer (str srv_name, netPort srv_port, boo
 //----------------------------------------------------------------------------------------------------------------------
 //----------------------------------------------------------------------------------------------------------------------
 // -> SECURITY API <-
+//----------------------------------------------------------------------------------------------------------------------
+
+bool NetworkSystem::setReconnectLimit ( int limit )
+{
+	mReconnectLimit = limit;
+	return true;
+}
+
+bool NetworkSystem::setReconnectLimit ( int limit, int sock_i )
+{
+	if ( invalid_socket_index ( sock_i ) ) {
+		return false;
+	}
+	mSockets[ sock_i ].reconnectLimit = limit;
+	return true;
+}
+
 //----------------------------------------------------------------------------------------------------------------------
 
 bool NetworkSystem::setSecurityLevel ( int level )
@@ -1257,6 +1268,8 @@ int NetworkSystem::netAddSocket ( int side, int mode, int status, bool block, Ne
 	s.blocking = block;
 	s.broadcast = 1;
 	s.security = mSecurity; 
+	s.reconnectLimit = mReconnectLimit; 
+	s.tcpFallback = mTcpFallbackAllowed; 
 
 	s.ctx = 0;
 	s.ssl = 0;
@@ -1568,21 +1581,15 @@ int NetworkSystem::netRecieveData ( int sock_i )
 	mBufferPtr = &mBuffer[ 0 ];
 	bool bDeserial;
 	while ( mBufferLen > 0 ) {
-
-		if ( mEvent.isEmpty() ) {
-
-			// Check the type of incoming socket
+		if ( mEvent.isEmpty ( ) ) { // Check the type of incoming socket
 			if (mSockets[ sock_i ].blocking) {
-
-				// Blocking socket. NOT an Event socket.
-				// Attach arbitrary data onto a new event.
+				// Blocking socket. NOT an Event socket. Attach arbitrary data onto a new event.
 				mEventLen = mBufferLen;
 				mEvent = new_event(mEventLen + 128, 'app ', 'HTTP', 0, mEventPool);
-				mEvent.rescope("nets");
-				mEvent.attachInt(mBufferLen);				// attachInt+Buf = attachStr
-				mEvent.attachBuf(mBufferPtr, mBufferLen);
+				mEvent.rescope( "nets" );
+				mEvent.attachInt( mBufferLen ); // attachInt+Buf = attachStr
+				mEvent.attachBuf( mBufferPtr, mBufferLen );
 				mDataLen = mEvent.mDataLen;
-
 			} else {
 				// Non-blocking socket. Receive a complete Event.
 				// directly read length-of-event info from incoming data (mDataLen value)
@@ -1596,9 +1603,9 @@ int NetworkSystem::netRecieveData ( int sock_i )
 				}
 				// Event is allocated with no name/target as this will be set during deserialize
 				NET_PERF_PUSH ( "newevent" );
-				mEvent = new_event( mDataLen, 0, 0, 0, mEventPool);
+				mEvent = new_event ( mDataLen, 0, 0, 0, mEventPool );
 				NET_PERF_POP ( );
-				mEvent.rescope("nets");		// belongs to network now
+				mEvent.rescope ( "nets" ); // Belongs to network now
 
 				// Deserialize of actual buffer length (EventLen or BufferLen)
 				NET_PERF_PUSH ( "header" );
@@ -1609,8 +1616,7 @@ int NetworkSystem::netRecieveData ( int sock_i )
 			mEvent.setSrcIP(mSockets[ sock_i ].src.ipL); // recover sender address from socket
 			bDeserial = true;
 
-		} else {
-			// More data for existing Event..
+		} else { // More data for existing Event..
 			bDeserial = false;
 		}
 
@@ -1630,7 +1636,7 @@ int NetworkSystem::netRecieveData ( int sock_i )
 				NET_PERF_POP ( );
 			}
 			// End of event
-			mBufferLen -= mEventLen;			// advance buffer
+			mBufferLen -= mEventLen; // Advance buffer
 			mBufferPtr += mEventLen;
 			mEventLen = 0;
 			int hsz = Event::staticSerializedHeaderSize();
@@ -1640,20 +1646,15 @@ int NetworkSystem::netRecieveData ( int sock_i )
 			if ( mEvent.mDataLen != mDataLen ) {
 				verbose_print ( "netSys ERROR: Event recv length %d does not match expected %d.", mEvent.mDataLen + hsz, mEventLen + hsz);
 			}
-			// Push completed event to the queue
 			NET_PERF_PUSH ( "queue" );
 			netQueueEvent ( mEvent );
 			NET_PERF_POP ( );
-
-			// Delete event
 			NET_PERF_PUSH ( "delete" );
 			delete_event ( mEvent );
 			NET_PERF_POP ( );
 
-		} else {
-			// Partial event..
-			if ( !bDeserial )	{
-				// not start of event, attach more data
+		} else { // Partial event..
+			if ( !bDeserial ) { // Not start of event, attach more data
 				NET_PERF_PUSH ( "attach" );
 				mEvent.attachBuf ( mBufferPtr, mBufferLen );
 				NET_PERF_POP ( );
@@ -1662,7 +1663,7 @@ int NetworkSystem::netRecieveData ( int sock_i )
 			mBufferPtr += mBufferLen;
 			mBufferLen = 0;
 		}
-	}	// end while
+	} // end while
 	
 	TRACE_EXIT ( (__func__) );
 	return mBufferLen;

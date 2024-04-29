@@ -77,6 +77,8 @@ class EventPool;
 
 class HELPAPI NetworkSystem {
 	
+#define VALID_INDEX(index) ((index) >= 0 && (index) < mSockets.size())
+	
 public:
 	NetworkSystem ();
 
@@ -90,6 +92,8 @@ public:
 	str netPrintAddr ( NetAddr adr );
 	
 	// Security API
+	bool setReconnectLimit ( int limit );
+	bool setReconnectLimit ( int limit, int sock_i );
 	bool setSecurityLevel ( int level );
 	bool setSecurityLevel ( int level, int sock_i );
 	bool setSecurityToPlainTCP ( );
@@ -103,11 +107,11 @@ public:
 	bool setPathToCertDir ( str path );
 	bool setPathToCertFile ( str path );
 	
-	// Server - Network API
+	// Server API
 	void netStartServer ( netPort srv_port );
 	void netServerListen ( int sock );
 
-	// Client - Network API
+	// Client API
 	void netStartClient ( netPort srv_port, str srv_addr="127.0.0.1" );
 	int netClientConnectToServer ( str srv_name, netPort srv_port, bool blocking = false );
 	int netCloseConnection ( int localsock );
@@ -129,70 +133,26 @@ public:
 	bool netIsConnectComplete ( int sock );
 	bool netCheckError ( int result, int sock );
 	int netError ( str msg, int error_id = 0 );
-
-	// Sockets - abtract functions
-	int netAddSocket ( int side, int mode, int status, bool block, NetAddr src, NetAddr dest );
-	int netFindSocket ( int side, int mode, int type );
-	int netFindSocket ( int side, int mode, NetAddr dest );
-	int netFindOutgoingSocket ( bool bTcp );
-	int netTerminateSocket ( int sock_i, int force=0 );
-	NetSock& getSock ( int sock_i )			{ return mSockets[ sock_i ]; }
-	str getSocketIP ( int sock_i )	{ return getIPStr( mSockets[ sock_i ].dest.ipL ); }
-
-	// Sockets - socket-specific low-level functions
-	void netStartSocketAPI ( );
-	void netSetHostname ( );
-	int netUpdateSocket ( int sock_i );
-	int netSocketBind ( int sock_i );	
-	int netSocketConnect ( int sock_i );
-	int netSocketListen ( int sock_i );
-	int netSocketAccept ( int sock_i,  SOCKET& tcp_sock, netIP& cli_ip, netPort& cli_port  );	
-	int netSocketRecv ( int sock_i, char* buf, int buflen, int& recvlen); 
 	
-	bool netIsError ( int result );	// socket-specific error check
-	void netReportError ( int result );
-	str netPrintError ( int ret, str msg, SSL* sslsock=0x0 );
-	int	netGetServerSocket ( int sock )	{ return ( sock >= mSockets.size ( ) ) ? -1 : mSockets[ sock ].dest.sock; }
-
-	bool netIsQueueEmpty() { return ( mEventQueue.size ( ) == 0 ); }
-
 	// Accessors
-	TimeX				getSysTime ( )		{ return TimeX::GetSystemNSec ( ); }
-	str					getHostName ( )		{ return mHostName; }
-	bool				isServer ( )		{ return mHostType == 's'; }
-	bool				isClient ( )		{ return mHostType == 'c'; }
-	netIP				getHostIP ( )		{ return mHostIP; }
-	str 				getIPStr ( netIP ip ); // return IP as a string
-	netIP				getStrToIP ( str name );
-	int					getMaxPacketLen ( )	{ return mMaxPacketLen; }
-	EventPool*  getPool()					{ return mEventPool; }
+	TimeX		getSysTime ( )		{ return TimeX::GetSystemNSec ( ); }
+	str			getHostName ( )		{ return mHostName; }
+	bool		isServer ( )		{ return mHostType == 's'; }
+	bool		isClient ( )		{ return mHostType == 'c'; }
+	bool 		netIsQueueEmpty ( )	{ return mEventQueue.size ( ) == 0; }
+	netIP		getHostIP ( )		{ return mHostIP; }
+	int			getMaxPacketLen ( )	{ return mMaxPacketLen; }
+	EventPool*  getPool ( )			{ return mEventPool; }
+	
+	NetSock*	getSock ( int sock_i )			{ return VALID_INDEX(sock_i) ? &mSockets[ sock_i ] : 0; }
+	str			getSockIP ( int sock_i )		{ return VALID_INDEX(sock_i) ? getIPStr ( mSockets[ sock_i ].dest.ipL ) : ""; }
+	int			getServerSock ( int sock_i )	{ return VALID_INDEX(sock_i) ? mSockets[ sock_i ].dest.sock : -1; }
+	
+	str 		getIPStr ( netIP ip ); // return IP as a string
+	netIP		getStrToIP ( str name );
 
 public:
-	#ifdef BUILD_OPENSSL
-		void free_openssl ( int sock_i ); 
-		int checkOpensslError ( int sock_i, int ret ); 
-		
-		int setupServerOpenssl ( int sock_i ); 
-		int acceptServerOpenssl ( int sock_i );
-		void checkServerOpensslHandshake ( int sock_i );
-		
-		int setupClientOpenssl ( int sock_i ); 
-		int connectClientOpenssl ( int sock_i );	
-		void checkClientOpensslHandshake ( int sock_i );	
-    #endif
-	
-	void netServerListenReturnSig ( int sock_i );	
-
-	EventPool*					mEventPool;	// Event Memory Pool
-	EventQueue					mEventQueue; // Network Event queue
-
-	uchar						mHostType;
-	str							mHostName; // Host info
-	netIP						mHostIP;
-	int							mReadyServices;
-	timeval						mRcvSelectTimout;
-
-	std::vector< NetSock >		mSockets; // Socket list
+	void netServerCompleteConnection ( int sock_i );	
 
 	funcEventHandler			mUserEventCallback;	// User event handler
 
@@ -221,7 +181,41 @@ public:
 		fd_set				    mSockSet;
 	#endif
 
-private: 
+private: // Functions
+
+	// Handling non-blocking OpenSSL handshake
+	#ifdef BUILD_OPENSSL
+		void free_openssl ( int sock_i ); 
+		int checkOpensslError ( int sock_i, int ret ); 
+		int setupServerOpenssl ( int sock_i ); 
+		int acceptServerOpenssl ( int sock_i );
+		void checkServerOpensslHandshake ( int sock_i );
+		int setupClientOpenssl ( int sock_i ); 
+		int connectClientOpenssl ( int sock_i );	
+		void checkClientOpensslHandshake ( int sock_i );	
+    #endif
+
+	// Abtract socket functions
+	int netAddSocket ( int side, int mode, int status, bool block, NetAddr src, NetAddr dest );
+	int netFindSocket ( int side, int mode, int type );
+	int netFindSocket ( int side, int mode, NetAddr dest );
+	int netFindOutgoingSocket ( bool bTcp );
+	int netTerminateSocket ( int sock_i, int force=0 );
+	bool netIsError ( int result );	// Socket-specific error check
+	void netReportError ( int result );
+	str netPrintError ( int ret, str msg, SSL* sslsock=0x0 );
+
+	// Low level handling of sockets
+	void netStartSocketAPI ( );
+	void netSetHostname ( );
+	int netUpdateSocket ( int sock_i );
+	int netSocketBind ( int sock_i );	
+	int netSocketConnect ( int sock_i );
+	int netSocketListen ( int sock_i );
+	int netSocketAccept ( int sock_i,  SOCKET& tcp_sock, netIP& cli_ip, netPort& cli_port  );	
+	int netSocketRecv ( int sock_i, char* buf, int buflen, int& recvlen); 
+
+	// Short helpers, used to simplify the program elsewhere
 	void sleep_ms ( int time_ms );
 	unsigned long get_read_ready_bytes ( int sock_h );
 	void make_sock_no_delay ( int sock_h );
@@ -229,7 +223,7 @@ private:
 	void make_sock_non_block ( int sock_h );
 	bool invalid_socket_index ( int sock_i );
 	
-	// Tracing and logging
+	// Handling tracing and logging
 	template<typename... Args> void verbose_print ( const char* fmt, Args... args );
 	template<typename... Args> void debug_print ( const char* fmt, Args... args );
 	template<typename... Args> void handshake_print ( const char* fmt, Args... args );
@@ -253,6 +247,20 @@ private:
 	void SOCK_CLOSE ( int sock_h );
 	str GET_IP_STR ( netIP ip );
 	
+private: // State
+	
+	// General
+	uchar mHostType;
+	str mHostName;
+	netIP mHostIP;
+	int mReadyServices;
+	timeval mRcvSelectTimout;	
+	std::vector< NetSock > mSockets;
+	
+	// Event related
+	EventPool* mEventPool; // Event Memory Pool
+	EventQueue mEventQueue; // Network Event queue
+	
 	// Trace related
 	struct timespec mRefTime;
 	FILE* mTrace;
@@ -261,6 +269,7 @@ private:
 	// Security related
 	int mSecurity;
 	int mTcpFallbackAllowed;
+	int mReconnectLimit;
 	str mPathPublicKey;
 	str mPathPrivateKey;
 	str mPathCertDir;

@@ -10,7 +10,8 @@ duration = 30
 # sudo ip netns exec emu-h2 ifconfig h2-dev-r1 up
 # sudo python3 do_route.py 
 
-# sudo sudo ip netns exec emu-h1 tcpkill host 10.0.1.10
+# sudo sudo ip netns exec emu-h1 tcpkill host 10.0.20.2
+# sudo sudo ip netns exec emu-h1 tcpkill host 10.0.10.1
 # tcpkill host 10.0.2.20
 # tcpkill host 127.0.0.1
 

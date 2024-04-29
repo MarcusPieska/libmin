@@ -122,6 +122,7 @@
 		bool					broadcast;		// is broadcast
 		bool					tcpFallback;    // allow plain TCP if OpenSSL fails
 		int 					security; 		// indicates the security level; e.g., OpenSSL
+		int 					reconnectLimit; // limits the number of reconnection attempts 
 		
 		SSL_CTX 				*ctx; 			// MP: Need to read up on these before commenting; Same cross-platform ? Tentative: Yes
 		SSL 					*ssl;			// MP:
