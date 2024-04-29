@@ -88,12 +88,21 @@ public:
 	void netVerbose ( bool v )	{ mPrintVerbose = v; }
 	void netPrint ( bool verbose = false );
 	str netPrintAddr ( NetAddr adr );
+	
+	// Security API
+	bool setSecurityLevel ( int level );
+	bool setSecurityLevel ( int level, int sock_i );
+	bool setSecurityToPlainTCP ( );
+	bool setSecurityToPlainTCP ( int sock_i );
+	bool setSecurityToOpenSSL ( );
+	bool setSecurityToOpenSSL ( int sock_i );
+	bool allowFallbackToPlainTCP ( bool allow );
+	bool allowFallbackToPlainTCP ( bool allow, int sock_i );
 	bool setPathToPublicKey ( str path );
 	bool setPathToPrivateKey ( str path );
 	bool setPathToCertDir ( str path );
 	bool setPathToCertFile ( str path );
 	
-
 	// Server - Network API
 	void netStartServer ( netPort srv_port );
 	void netServerListen ( int sock );
@@ -218,6 +227,7 @@ private:
 	void make_sock_no_delay ( int sock_h );
 	void make_sock_block ( int sock_h );
 	void make_sock_non_block ( int sock_h );
+	bool invalid_socket_index ( int sock_i );
 	
 	// Tracing and logging
 	template<typename... Args> void verbose_print ( const char* fmt, Args... args );
@@ -243,9 +253,14 @@ private:
 	void SOCK_CLOSE ( int sock_h );
 	str GET_IP_STR ( netIP ip );
 	
+	// Trace related
 	struct timespec mRefTime;
 	FILE* mTrace;
 	int mIndentCount;
+	
+	// Security related
+	int mSecurity;
+	int mTcpFallbackAllowed;
 	str mPathPublicKey;
 	str mPathPrivateKey;
 	str mPathCertDir;

@@ -425,16 +425,20 @@ NetworkSystem::NetworkSystem ()
 	mHostIP = 0;
 	mReadyServices = 0;
 	mUserEventCallback = 0;
-	mPrintVerbose = true;
-	mPrintDebugNet = true;
-	mPrintHandshake = true;
-	mTrace = 0;
+	mRcvSelectTimout.tv_sec = 0;
+	mRcvSelectTimout.tv_usec = 1e5;
+	
+	mSecurity = NET_SECURITY_PLAIN_TCP;
+	mTcpFallbackAllowed = true;
 	mPathPublicKey = str("");
 	mPathPrivateKey = str("");
 	mPathCertDir = str("");
 	mPathCertFile = str("");
-	mRcvSelectTimout.tv_sec = 0;
-	mRcvSelectTimout.tv_usec = 1e5;
+	
+	mPrintVerbose = true;
+	mPrintDebugNet = true;
+	mPrintHandshake = true;
+	mTrace = 0;
 }
 
 void NetworkSystem::sleep_ms ( int time_ms ) 
@@ -478,6 +482,11 @@ void NetworkSystem::make_sock_non_block ( SOCKET sock_h )
 	TRACE_ENTER ( (__func__) );
 	SOCK_MAKE_BLOCK ( sock_h, false );
 	TRACE_EXIT ( (__func__) );
+}
+
+bool NetworkSystem::invalid_socket_index ( int sock_i ) 
+{
+	return sock_i < 0 || sock_i >= mSockets.size ( );
 }
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -677,7 +686,7 @@ void NetworkSystem::netStartServer ( netPort srv_port )
 	TRACE_EXIT ( (__func__) );
 }
 
-void NetworkSystem::netServerListen ( int sock )
+void NetworkSystem::netServerListen ( int sock_i )
 {
 	TRACE_ENTER ( (__func__) );
 	int srv_sock_svc = netFindSocket ( NET_SRV, NET_TCP, NET_ANY );
@@ -690,7 +699,7 @@ void NetworkSystem::netServerListen ( int sock )
 	netIP cli_ip = 0;
 	netPort cli_port = 0;
 
-	SOCKET newSOCK;	// new literal socket
+	SOCKET newSOCK;	// New literal socket
 	int result = netSocketAccept ( srv_sock_svc, newSOCK, cli_ip, cli_port );
 	if ( result < 0 ) {
 		verbose_print ( "Connection not accepted." );
@@ -698,20 +707,16 @@ void NetworkSystem::netServerListen ( int sock )
 		return;
 	}
 
-	// Get server IP. Listen/accept happens on ANY address (0.0.0.0)
-	// we want the literal server IP for final connection
-	netIP srv_ip = mHostIP;
-
-	// Create new socket
-	int srv_sock_tcp = netAddSocket ( NET_SRV, NET_TCP, NET_CONNECT, false,
-										NetAddr(NET_CONNECT, srv_name, srv_ip, srv_port), 
-										NetAddr(NET_CONNECT, "", cli_ip, cli_port) );
+	netIP srv_ip = mHostIP; // Listen/accept on ANY address (0.0.0.0), final connection needs the server IP
+	NetAddr addr1 ( NET_CONNECT, srv_name, srv_ip, srv_port );
+	NetAddr addr2 ( NET_CONNECT, "", cli_ip, cli_port );
+	int srv_sock_tcp = netAddSocket ( NET_SRV, NET_TCP, NET_CONNECT, false, addr1, addr2 ); // Create new socket
 
 	NetSock& s = mSockets[ srv_sock_tcp ];
 	make_sock_non_block ( newSOCK );
-	s.socket = newSOCK; // assign literal socket
-	s.dest.ipL = cli_ip; // assign client IP
-	s.dest.port = cli_port;	// assign client port
+	s.socket = newSOCK; // Assign literal socket
+	s.dest.ipL = cli_ip; // Assign client IP
+	s.dest.port = cli_port;	// Assign client port
 	s.status = NET_ENABLE;
 
 	if ( s.security == NET_SECURITY_OPENSSL ) { 
@@ -719,7 +724,7 @@ void NetworkSystem::netServerListen ( int sock )
 	} 
 	else if ( s.security == NET_SECURITY_PLAIN_TCP ) { // Complete TCP or SSL connection
 		s.status = NET_CONNECTED; 
-		netServerListenReturnSig ( sock );
+		netServerListenReturnSig ( sock_i );
 	}
 	TRACE_EXIT ( (__func__) ); 	
 } 
@@ -1004,7 +1009,90 @@ int NetworkSystem::netClientConnectToServer (str srv_name, netPort srv_port, boo
 //
 //----------------------------------------------------------------------------------------------------------------------
 //----------------------------------------------------------------------------------------------------------------------
-// -> CORE CODE <-
+// -> SECURITY API <-
+//----------------------------------------------------------------------------------------------------------------------
+
+bool NetworkSystem::setSecurityLevel ( int level )
+{
+	if ( level == NET_SECURITY_PLAIN_TCP ) {
+		return setSecurityToPlainTCP ( );
+	}
+	if ( level == NET_SECURITY_OPENSSL ) {
+		return setSecurityToOpenSSL ( );
+	}
+	return false;
+}
+
+bool NetworkSystem::setSecurityLevel ( int level, int sock_i )
+{
+	if ( level == NET_SECURITY_PLAIN_TCP ) {
+		return setSecurityToPlainTCP ( sock_i );
+	}
+	if ( level == NET_SECURITY_OPENSSL ) {
+		return setSecurityToOpenSSL ( sock_i );
+	}
+	return false;
+}
+
+//----------------------------------------------------------------------------------------------------------------------
+
+bool NetworkSystem::setSecurityToPlainTCP ( )
+{
+	mSecurity = NET_SECURITY_PLAIN_TCP;
+	return true;
+}
+
+bool NetworkSystem::setSecurityToPlainTCP ( int sock_i )
+{
+	if ( invalid_socket_index ( sock_i ) ) {
+		return false;
+	}
+	mSockets[ sock_i ].security = NET_SECURITY_PLAIN_TCP;
+	return true;
+}
+
+//----------------------------------------------------------------------------------------------------------------------
+
+bool NetworkSystem::setSecurityToOpenSSL ( )
+{
+	#ifdef BUILD_OPENSSL
+		mSecurity = NET_SECURITY_OPENSSL;
+		return true;
+	#else
+		return false;
+	#endif
+}
+
+bool NetworkSystem::setSecurityToOpenSSL ( int sock_i )
+{
+	if ( invalid_socket_index ( sock_i ) ) {
+		return false;
+	}
+	#ifdef BUILD_OPENSSL
+		mSockets[ sock_i ].security = NET_SECURITY_PLAIN_TCP;
+		return true;
+	#else
+		return false;
+	#endif
+}
+
+//----------------------------------------------------------------------------------------------------------------------
+
+bool NetworkSystem::allowFallbackToPlainTCP ( bool allow )
+{
+	mTcpFallbackAllowed = allow;
+	return true;
+}
+
+bool NetworkSystem::allowFallbackToPlainTCP ( bool allow, int sock_i )
+{
+	if ( invalid_socket_index ( sock_i ) ) {
+		return false;
+	}
+	mSockets[ sock_i ].tcpFallback = allow;
+	return true;
+}
+
 //----------------------------------------------------------------------------------------------------------------------
 
 bool NetworkSystem::setPathToPublicKey ( str path )
@@ -1046,6 +1134,10 @@ bool NetworkSystem::setPathToCertFile ( str path )
 	mPathCertFile = path;
 	return true;
 }
+
+//----------------------------------------------------------------------------------------------------------------------
+// -> CORE CODE <-
+//----------------------------------------------------------------------------------------------------------------------
 
 int NetworkSystem::netCloseAll ()
 {
@@ -1164,8 +1256,7 @@ int NetworkSystem::netAddSocket ( int side, int mode, int status, bool block, Ne
 	s.timeout.tv_usec = 0;
 	s.blocking = block;
 	s.broadcast = 1;
-	//s.security = NET_SECURITY_PLAIN_TCP; 
-	s.security = NET_SECURITY_OPENSSL; 
+	s.security = mSecurity; 
 
 	s.ctx = 0;
 	s.ssl = 0;

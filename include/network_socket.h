@@ -120,7 +120,8 @@
 		SOCKET					socket;			// hard socket
 		bool					blocking;		// is blocking
 		bool					broadcast;		// is broadcast
-		int 					security; 		// MP: > 0 indicates openssl is used //MP
+		bool					tcpFallback;    // allow plain TCP if OpenSSL fails
+		int 					security; 		// indicates the security level; e.g., OpenSSL
 		
 		SSL_CTX 				*ctx; 			// MP: Need to read up on these before commenting; Same cross-platform ? Tentative: Yes
 		SSL 					*ssl;			// MP:
