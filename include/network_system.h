@@ -80,7 +80,7 @@ class HELPAPI NetworkSystem {
 #define VALID_INDEX(index) ((index) >= 0 && (index) < mSockets.size())
 	
 public:
-	NetworkSystem ();
+	NetworkSystem ( );
 
 	// Network System
 	void netInitialize ( );
@@ -130,7 +130,7 @@ public:
 	void netQueueEvent ( Event& e ); // Place incoming event on recv queue
 	int netEventCallback ( Event& e ); // Processes network events (dispatch)
 	void netSetUserCallback ( funcEventHandler userfunc )	{ mUserEventCallback = userfunc; }
-	bool netIsConnectComplete ( int sock );
+	bool netIsConnectComplete ( int sock_i );
 	bool netCheckError ( int result, int sock );
 	int netError ( str msg, int error_id = 0 );
 	
@@ -151,7 +151,7 @@ public:
 	str 		getIPStr ( netIP ip ); // return IP as a string
 	netIP		getStrToIP ( str name );
 
-public:
+private: // MP: Move this stuff
 	void netServerCompleteConnection ( int sock_i );	
 
 	funcEventHandler			mUserEventCallback;	// User event handler
@@ -167,12 +167,6 @@ public:
 	char						mBuffer[ NET_BUFSIZE ];
 	int							mMaxPacketLen;
 
-	// Debugging
-	int							mCheck;
-	bool						mPrintDebugNet;
-	bool						mPrintVerbose;
-	bool						mPrintHandshake;
-
 	#ifdef _WIN32
 		struct fd_set			mSockSet;
 	#elif __ANDROID__
@@ -187,11 +181,11 @@ private: // Functions
 	#ifdef BUILD_OPENSSL
 		void free_openssl ( int sock_i ); 
 		int checkOpensslError ( int sock_i, int ret ); 
-		int setupServerOpenssl ( int sock_i ); 
-		int acceptServerOpenssl ( int sock_i );
+		void setupServerOpenssl ( int sock_i ); 
+		void acceptServerOpenssl ( int sock_i );
 		void checkServerOpensslHandshake ( int sock_i );
-		int setupClientOpenssl ( int sock_i ); 
-		int connectClientOpenssl ( int sock_i );	
+		void setupClientOpenssl ( int sock_i ); 
+		void connectClientOpenssl ( int sock_i );	
 		void checkClientOpensslHandshake ( int sock_i );	
     #endif
 
@@ -261,7 +255,11 @@ private: // State
 	EventPool* mEventPool; // Event Memory Pool
 	EventQueue mEventQueue; // Network Event queue
 	
-	// Trace related
+	// Debug and trace related
+	int	mCheck;
+	bool mPrintDebugNet;
+	bool mPrintVerbose;
+	bool mPrintHandshake;
 	struct timespec mRefTime;
 	FILE* mTrace;
 	int mIndentCount;
