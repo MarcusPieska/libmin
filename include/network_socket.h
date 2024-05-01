@@ -110,19 +110,23 @@
 
 	// Network Socket Abstraction
 	struct HELPAPI NetSock {
-		eventStr_t				sys;			// system
-		char					side;			// side (client, server)
-		char					mode;			// mode (TCP, UDP)		
-		char					status;			// stat (off, connected)
-		timeval					timeout;		
-		NetAddr					src;			// source socket (ip, port, name, sockID)		
-		NetAddr					dest;			// dest socket (ip, port, name, sockID)	
-		SOCKET					socket;			// hard socket
-		bool					blocking;		// is blocking
-		bool					broadcast;		// is broadcast
-		bool					tcpFallback;    // allow plain TCP if OpenSSL fails
-		int 					security; 		// indicates the security level; e.g., OpenSSL
-		int 					reconnectLimit; // limits the number of reconnection attempts 
+		eventStr_t			sys;				// system
+		char				side;				// side (client, server)
+		char				mode;				// mode (TCP, UDP)		
+		char				status;				// stat (off, connected)
+		timeval				timeout;		
+		NetAddr				src;				// source socket (ip, port, name, sockID)		
+		NetAddr				dest;				// dest socket (ip, port, name, sockID)	
+		SOCKET				socket;				// hard socket
+		bool				blocking;			// is blocking
+		bool				broadcast;			// is broadcast
+		bool				tcpFallback;		// allow plain TCP if OpenSSL fails
+		int 				security; 			// indicates the security level; e.g., OpenSSL
+		int 				reconnectLimit; 	// limits the number of reconnection attempts 
+		int 				reconnectBudget; 	// remaining allowed reconnect attempts
+		
+		std::string srvAddr;
+		int srvPort;
 		
 		SSL_CTX 				*ctx; 			// MP: Need to read up on these before commenting; Same cross-platform ? Tentative: Yes
 		SSL 					*ssl;			// MP:

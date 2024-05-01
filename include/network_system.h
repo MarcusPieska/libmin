@@ -113,6 +113,7 @@ public:
 
 	// Client API
 	void netStartClient ( netPort srv_port, str srv_addr="127.0.0.1" );
+	void checkClientConnections ( );
 	int netClientConnectToServer ( str srv_name, netPort srv_port, bool blocking = false );
 	int netCloseConnection ( int localsock );
 	int netCloseAll ( );
@@ -150,6 +151,8 @@ public:
 	
 	str 		getIPStr ( netIP ip ); // return IP as a string
 	netIP		getStrToIP ( str name );
+
+    timeval mLastClientConnectCheck;
 
 private: // MP: Move this stuff
 	void netServerCompleteConnection ( int sock_i );	
@@ -198,6 +201,9 @@ private: // Functions
 	bool netIsError ( int result );	// Socket-specific error check
 	void netReportError ( int result );
 	str netPrintError ( int ret, str msg, SSL* sslsock=0x0 );
+	bool usableConnection ( int sock_i );
+	bool sockSetForRead ( int sock_i );
+	void handleConnection ( int sock_i );
 
 	// Low level handling of sockets
 	void netStartSocketAPI ( );
