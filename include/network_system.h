@@ -77,7 +77,7 @@ class EventPool;
 
 class HELPAPI NetworkSystem {
 	
-#define VALID_INDEX(index) ((index) >= 0 && (index) < mSockets.size())
+#define VALID_INDEX(index) ((index) >= 0 && (index) < m_socks.size())
 	
 public:
 	NetworkSystem ( );
@@ -86,12 +86,16 @@ public:
 	void netInitialize ( );
 	void netCreate ( );
 	void netDestroy ( );
-	void netDebug ( bool v )	{ mPrintDebugNet = v; mPrintVerbose = v;  }
-	void netVerbose ( bool v )	{ mPrintVerbose = v; }
+	void netDebug ( bool v )	{ m_printDebugNet = v; m_printVerbose = v;  }
+	void netVerbose ( bool v )	{ m_printVerbose = v; }
 	void netPrint ( bool verbose = false );
 	str netPrintAddr ( NetAddr adr );
 	
-	// Security API
+	// Miscellaneous config API
+	bool setSelectInterval ( int time_ms ); 
+	
+	// Security config API
+	bool setReconnectInterval ( int time_ms ); 
 	bool setReconnectLimit ( int limit );
 	bool setReconnectLimit ( int limit, int sock_i );
 	bool setSecurityLevel ( int level );
@@ -115,7 +119,7 @@ public:
 	void netStartClient ( netPort srv_port, str srv_addr="127.0.0.1" );
 	void checkClientConnections ( );
 	int netClientConnectToServer ( str srv_name, netPort srv_port, bool blocking = false );
-	int netCloseConnection ( int localsock );
+	int netCloseConnection ( int sock_i );
 	int netCloseAll ( );
 
 	// Event processing
@@ -130,24 +134,24 @@ public:
 	bool netSendLiteral ( str str, int sock );
 	void netQueueEvent ( Event& e ); // Place incoming event on recv queue
 	int netEventCallback ( Event& e ); // Processes network events (dispatch)
-	void netSetUserCallback ( funcEventHandler userfunc )	{ mUserEventCallback = userfunc; }
+	void netSetUserCallback ( funcEventHandler userfunc )	{ m_userEventCallback = userfunc; }
 	bool netIsConnectComplete ( int sock_i );
 	bool netCheckError ( int result, int sock );
 	int netError ( str msg, int error_id = 0 );
 	
 	// Accessors
 	TimeX		getSysTime ( )		{ return TimeX::GetSystemNSec ( ); }
-	str			getHostName ( )		{ return mHostName; }
-	bool		isServer ( )		{ return mHostType == 's'; }
-	bool		isClient ( )		{ return mHostType == 'c'; }
-	bool 		netIsQueueEmpty ( )	{ return mEventQueue.size ( ) == 0; }
-	netIP		getHostIP ( )		{ return mHostIP; }
-	int			getMaxPacketLen ( )	{ return mMaxPacketLen; }
-	EventPool*  getPool ( )			{ return mEventPool; }
+	str			getHostName ( )		{ return m_hostName; }
+	bool		isServer ( )		{ return m_hostType == 's'; }
+	bool		isClient ( )		{ return m_hostType == 'c'; }
+	bool 		netIsQueueEmpty ( )	{ return m_eventQueue.size ( ) == 0; }
+	netIP		getHostIP ( )		{ return m_hostIp; }
+	int			getMaxPacketLen ( )	{ return m_maxPacketLen; }
+	EventPool*  getPool ( )			{ return m_eventPool; }
 	
-	NetSock*	getSock ( int sock_i )			{ return VALID_INDEX(sock_i) ? &mSockets[ sock_i ] : 0; }
-	str			getSockIP ( int sock_i )		{ return VALID_INDEX(sock_i) ? getIPStr ( mSockets[ sock_i ].dest.ipL ) : ""; }
-	int			getServerSock ( int sock_i )	{ return VALID_INDEX(sock_i) ? mSockets[ sock_i ].dest.sock : -1; }
+	NetSock*	getSock ( int sock_i )			{ return VALID_INDEX(sock_i) ? &m_socks[ sock_i ] : 0; }
+	str			getSockIP ( int sock_i )		{ return VALID_INDEX(sock_i) ? getIPStr ( m_socks[ sock_i ].dest.ipL ) : ""; }
+	int			getServerSock ( int sock_i )	{ return VALID_INDEX(sock_i) ? m_socks[ sock_i ].dest.sock : -1; }
 	
 	str 		getIPStr ( netIP ip ); // return IP as a string
 	netIP		getStrToIP ( str name );
@@ -157,25 +161,25 @@ public:
 private: // MP: Move this stuff
 	void netServerCompleteConnection ( int sock_i );	
 
-	funcEventHandler			mUserEventCallback;	// User event handler
+	funcEventHandler			m_userEventCallback;	// User event handler
 
 	// Incoming event data
-	int							mDataLen;
-	int							mEventLen;
-	Event						mEvent;	// Incoming event
+	int							m_dataLen;
+	int							m_eventLen;
+	Event						m_event;	// Incoming event
 
 	// Network buffers
-	int							mBufferLen;
-	char*						mBufferPtr;
-	char						mBuffer[ NET_BUFSIZE ];
-	int							mMaxPacketLen;
+	int							m_bufferLen;
+	char*						m_bufferPtr;
+	char						m_buffer[ NET_BUFSIZE ];
+	int							m_maxPacketLen;
 
 	#ifdef _WIN32
-		struct fd_set			mSockSet;
+		struct fd_set			m_sockSet;
 	#elif __ANDROID__
-		fd_set				    mSockSet;
+		fd_set				    m_sockSet;
 	#elif __linux__
-		fd_set				    mSockSet;
+		fd_set				    m_sockSet;
 	#endif
 
 private: // Functions
@@ -250,34 +254,35 @@ private: // Functions
 private: // State
 	
 	// General
-	uchar mHostType;
-	str mHostName;
-	netIP mHostIP;
-	int mReadyServices;
-	timeval mRcvSelectTimout;	
-	std::vector< NetSock > mSockets;
+	uchar m_hostType;
+	str m_hostName;
+	netIP m_hostIp;
+	int m_readyServices;
+	timeval m_rcvSelectTimout;	
+	std::vector< NetSock > m_socks;
 	
 	// Event related
-	EventPool* mEventPool; // Event Memory Pool
-	EventQueue mEventQueue; // Network Event queue
+	EventPool* m_eventPool; 
+	EventQueue m_eventQueue;
 	
 	// Debug and trace related
-	int	mCheck;
-	bool mPrintDebugNet;
-	bool mPrintVerbose;
-	bool mPrintHandshake;
-	struct timespec mRefTime;
-	FILE* mTrace;
-	int mIndentCount;
+	int	m_check;
+	bool m_printDebugNet;
+	bool m_printVerbose;
+	bool m_printHandshake;
+	struct timespec m_refTime;
+	FILE* m_trace;
+	int m_indentCount;
 	
 	// Security related
-	int mSecurity;
-	int mTcpFallbackAllowed;
-	int mReconnectLimit;
-	str mPathPublicKey;
-	str mPathPrivateKey;
-	str mPathCertDir;
-	str mPathCertFile;
+	int m_security;
+	int m_tcpFallbackAllowed;
+	int m_reconnectInterval;
+	int m_reconnectLimit;
+	str m_pathPublicKey;
+	str m_pathPrivateKey;
+	str m_pathCertDir;
+	str m_pathCertFile;
 };
 
 extern NetworkSystem* net;
