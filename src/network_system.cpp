@@ -347,7 +347,7 @@ inline void NetworkSystem::SOCK_CLOSE ( int sock_h )
 		int err = 1;
 		socklen_t len = sizeof ( err );
 		if ( -1 == getsockopt ( sock_h, SOL_SOCKET, SO_ERROR, (char*)&err, &len ) ) {
-			printf ( "getSO_ERROR" );
+			debug_print ( "getSO_ERROR" );
 		}
 		if ( err ) {
 			errno = err;  
@@ -765,8 +765,13 @@ void NetworkSystem::netServerCompleteConnection ( int sock_i )
 void NetworkSystem::setupClientOpenssl ( int sock_i ) 
 { 
 	TRACE_ENTER ( (__func__) );
-	int ret=0, exp;
 	NetSock& s = mSockets[ sock_i ];
+	if ( s.ctx != 0 ) {
+		free_openssl ( sock_i ); 
+		handshake_print ( "Call to free old context made" );
+	}
+	
+	int ret=0, exp;
 	make_sock_no_delay ( s.socket );
 	make_sock_non_block ( s.socket ); 
 	#if OPENSSL_VERSION_NUMBER < 0x10100000L // Version 1.1
@@ -837,6 +842,7 @@ void NetworkSystem::setupClientOpenssl ( int sock_i )
 void NetworkSystem::connectClientOpenssl ( int sock_i )
 {
 	TRACE_ENTER ( (__func__) );
+	ERR_clear_error ( );
 	int ret = 0, exp;
 	NetSock& s = mSockets[ sock_i ];
 	if ( ( ret = SSL_connect ( s.ssl ) ) < 0 ) {
@@ -866,6 +872,7 @@ void NetworkSystem::checkClientOpensslHandshake ( int sock_i )
 	TRACE_ENTER ( (__func__) );
 	NetSock& s = mSockets [ sock_i ];
 	if ( s.security == NET_SECURITY_OPENSSL ) {
+		std::cout << "-----> checkClientOpensslHandshake: sock_i:" << sock_i << " " << s.status << std::endl;
 		if ( s.status < NET_SSL_HS_STARTED ) {
 			setupClientOpenssl ( sock_i );
 			if ( s.security == NET_SECURITY_FAIL ) {
@@ -985,7 +992,7 @@ int NetworkSystem::netClientConnectToServer ( str srv_name, netPort srv_port, bo
 	NetSock& s = mSockets[ cli_sock_tcp ];
 	s.srvAddr = srv_name;
 	s.srvPort = srv_port;
-	if ( setsockopt( s.socket, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(int) ) < 0 ) {
+	if ( setsockopt ( s.socket, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof ( int ) ) < 0 ) {
 		verbose_print ( "netSys: Setting server socket as SO_REUSEADDR." );
 	}
 	if ( s.status != NET_CONNECTED ) { // Try to connect if needed
@@ -998,7 +1005,8 @@ int NetworkSystem::netClientConnectToServer ( str srv_name, netPort srv_port, bo
 	}
 	
 	if ( s.security == NET_SECURITY_OPENSSL ) { // SSL handshake
-		checkClientOpensslHandshake ( cli_sock_tcp );
+		s.status = NET_SSL_HS_NOT_STARTED;
+		//checkClientOpensslHandshake ( cli_sock_tcp );
 	}
 	TRACE_EXIT ( (__func__) );
 	return cli_sock_tcp; // Return socket for this connection
@@ -1281,7 +1289,7 @@ int NetworkSystem::netAddSocket ( int side, int mode, int status, bool block, Ne
 	s.ssl = 0;
 	s.bio = 0;
 
-	int n = mSockets.size ();
+	int n = mSockets.size ( );
 	mSockets.push_back ( s );
 	netUpdateSocket ( n );
 	TRACE_EXIT ( (__func__) );
@@ -1308,6 +1316,13 @@ int NetworkSystem::netTerminateSocket ( int sock_i, int force )
 	}
 	if ( mHostType == 'c' && s.reconnectBudget > 0 ) {
 		s.status = NET_CONNECT;
+		if ( s.ctx != 0 ) {
+			free_openssl ( sock_i ); 
+			handshake_print ( "Call to free old context made" );
+		}
+		SOCK_CLOSE ( s.socket );
+		s.socket = 0;
+		netUpdateSocket ( sock_i );
 		TRACE_EXIT ( (__func__) );
 		return 0;	
 	}
@@ -1414,7 +1429,7 @@ str NetworkSystem::netPrintError ( int ret, str msg, SSL* sslsock )
 	 }
 	#endif
 
-	printf ( "%s\n", msg.c_str() );
+	debug_print ( "%s\n", msg.c_str() );
 	TRACE_EXIT ( (__func__) );
 	return msg;
 }
@@ -1463,8 +1478,14 @@ void NetworkSystem::checkClientConnections ( )
 	TRACE_ENTER ( (__func__) );
 	for ( int n = 1; n < (int) mSockets.size ( ); n++ ) {
 		NetSock& s = mSockets[ n ];
-		if ( ! netIsConnectComplete ( n ) && s.reconnectBudget > 0 ) {	
-			std::cout << " xxx checkClientConnections::: " << (int)s.status << " :sock " << n << " : " << s.reconnectBudget << std::endl;
+		if ( s.security == NET_SECURITY_OPENSSL && s.status >= NET_SSL_HS_NOT_STARTED ) {
+			if ( s.status < NET_SSL_HS_FINISHED ) {
+				std::cout << " xxx 1 checkClientConnections::: " << (int)s.status << " :sock " << n << " : " << s.reconnectBudget << std::endl;
+				checkClientOpensslHandshake ( n );
+			}
+		}
+		else if ( ( s.status != NET_CONNECTED ) && s.reconnectBudget > 0 ) {	
+			std::cout << " xxx 2 checkClientConnections::: " << (int)s.status << " :sock " << n << " : " << s.reconnectBudget << std::endl;
 			s.reconnectBudget--;
 			netClientConnectToServer ( s.srvAddr, s.srvPort, false ); // If disconnected, try and reconnect
 		}
@@ -1555,8 +1576,17 @@ int NetworkSystem::netRecieveSelect ( )
 
 bool NetworkSystem::usableConnection ( int sock_i )
 {
+	TRACE_ENTER ( (__func__) );
+	bool outcome = false;
 	NetSock& s = mSockets[ sock_i ];
-	return ! ( s.security == NET_SECURITY_OPENSSL && s.status < NET_SSL_HS_FINISHED );
+	if ( s.security == NET_SECURITY_PLAIN_TCP ) {
+		outcome = true;
+	}
+	else if ( s.security == NET_SECURITY_OPENSSL && s.status >= NET_SSL_HS_FINISHED ) {
+		outcome =  true;
+	}
+	TRACE_EXIT ( (__func__) );
+	return outcome;
 }
 
 bool NetworkSystem::sockSetForRead ( int sock_i )
@@ -1574,15 +1604,20 @@ bool NetworkSystem::sockSetForRead ( int sock_i )
 
 void NetworkSystem::handleConnection ( int sock_i )
 {
+	TRACE_ENTER ( (__func__) );
 	NetSock& s = mSockets[ sock_i ];
-	if ( s.security == NET_SECURITY_OPENSSL && s.status < NET_SSL_HS_FINISHED ) {
+	if ( mHostType == 'c' && s.status < NET_SSL_HS_NOT_STARTED ) {
+		
+	}
+	else if ( s.security == NET_SECURITY_OPENSSL && s.status < NET_SSL_HS_FINISHED ) {
 		if ( mHostType == 's' && sock_i != 0 ) {
 			checkServerOpensslHandshake ( sock_i );
 		}
-		if ( mHostType == 'c' ) { 
+		else if ( mHostType == 'c' ) { 
 			checkClientOpensslHandshake ( sock_i );
 		}	
 	}
+	TRACE_EXIT ( (__func__) );
 }
 
 int NetworkSystem::netRecieveAllData ( )
