@@ -97,24 +97,24 @@ public:
 	str netPrintAddr ( NetAddr adr );
 	
 	// Miscellaneous config API
-	bool setSelectInterval ( int time_ms ); 
+	bool netSetSelectInterval ( int time_ms ); 
 	
 	// Security config API
-	bool setReconnectInterval ( int time_ms ); 
-	bool setReconnectLimit ( int limit );
-	bool setReconnectLimit ( int limit, int sock_i );
-	bool setSecurityLevel ( int level );
-	bool setSecurityLevel ( int level, int sock_i );
-	bool setSecurityToPlainTCP ( );
-	bool setSecurityToPlainTCP ( int sock_i );
-	bool setSecurityToOpenSSL ( );
-	bool setSecurityToOpenSSL ( int sock_i );
-	bool allowFallbackToPlainTCP ( bool allow );
-	bool allowFallbackToPlainTCP ( bool allow, int sock_i );
-	bool setPathToPublicKey ( str path );
-	bool setPathToPrivateKey ( str path );
-	bool setPathToCertDir ( str path );
-	bool setPathToCertFile ( str path );
+	bool netSetReconnectInterval ( int time_ms ); 
+	bool netSetReconnectLimit ( int limit );
+	bool netSetReconnectLimit ( int limit, int sock_i );
+	bool netSetSecurityLevel ( int level );
+	bool netSetSecurityLevel ( int level, int sock_i );
+	bool netSetSecurityToPlainTCP ( );
+	bool netSetSecurityToPlainTCP ( int sock_i );
+	bool netSetSecurityToOpenSSL ( );
+	bool netSetSecurityToOpenSSL ( int sock_i );
+	bool netAllowFallbackToPlainTCP ( bool allow );
+	bool netAllowFallbackToPlainTCP ( bool allow, int sock_i );
+	bool netSetPathToPublicKey ( str path );
+	bool netSetPathToPrivateKey ( str path );
+	bool netSetPathToCertDir ( str path );
+	bool netSetPathToCertFile ( str path );
 	
 	// Server API
 	void netStartServer ( netPort srv_port, int security = NET_SECURITY_UNDEF );
@@ -139,7 +139,7 @@ public:
 	void netSetUserCallback ( funcEventHandler userfunc )	{ m_userEventCallback = userfunc; }
 	bool netIsConnectComplete ( int sock_i );
 	bool netCheckError ( int result, int sock );
-	int netError ( str msg, int error_id = 0 );
+	int netPrintError ( str msg, int error_id = 0 );
 	
 	// Accessors
 	TimeX		getSysTime ( )		{ return TimeX::GetSystemNSec ( ); }
@@ -158,10 +158,10 @@ public:
 	str 		getIPStr ( netIP ip ); // return IP as a string
 	netIP		getStrToIP ( str name );
 
-    timeval mLastClientConnectCheck;
-
 private: // MP: Move this stuff
 	void netServerCompleteConnection ( int sock_i );	
+
+	TimeX m_refTime;
 
 	funcEventHandler			m_userEventCallback;	// User event handler
 
@@ -187,6 +187,7 @@ private: // Functions
 	int netFindSocket ( int side, int mode, int type );
 	int netFindSocket ( int side, int mode, NetAddr dest );
 	int netFindOutgoingSocket ( bool bTcp );
+	int netHandshakeError ( int sock_i );
 	int netTerminateSocket ( int sock_i, int force=0 );
 	bool netIsError ( int result );	// Socket-specific error check
 	void netReportError ( int result );
@@ -195,7 +196,7 @@ private: // Functions
 	// Low level handling of sockets
 	void netStartSocketAPI ( );
 	void netSetHostname ( );
-	int netUpdateSocket ( int sock_i );
+	int netSocketAdd ( int sock_i );
 	int netSocketBind ( int sock_i );	
 	int netSocketConnect ( int sock_i );
 	int netSocketListen ( int sock_i );
@@ -203,7 +204,7 @@ private: // Functions
 	int netSocketRecv ( int sock_i, char* buf, int buflen, int& recvlen); 
 	bool netSocketIsConnected ( int sock_i );
 	bool netSocketSetForRead ( fd_set* sockSet, int sock_i );
-	int netSocketRecvSelect ( fd_set* sockSet );
+	int netSocketSelectRead ( fd_set* sockSet );
 
 	// Short helpers, used to simplify the program elsewhere
 	void sleep_ms ( int time_ms );
@@ -245,6 +246,7 @@ private: // State
 	netIP m_hostIp;
 	int m_readyServices;
 	timeval m_rcvSelectTimout;	
+	TimeX m_lastClientConnectCheck;
 	std::vector< NetSock > m_socks;
 	
 	// Event related
@@ -267,7 +269,6 @@ private: // State
 	bool m_printDebugNet;
 	bool m_printVerbose;
 	bool m_printHandshake;
-	struct timespec m_refTime;
 	FILE* m_trace;
 	int m_indentCount;
 	

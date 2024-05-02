@@ -72,8 +72,8 @@
 	#define NET_ENABLE					1
 	#define STATE_SSL_HANDSHAKE			2
 	#define STATE_CONNECTED				3
-	#define STATE_FAILED				5
-	#define NET_TERMINATED				4
+	#define STATE_FAILED				4
+	#define STATE_TERMINATED			5
 	
 
 	// Network Address Abstraction

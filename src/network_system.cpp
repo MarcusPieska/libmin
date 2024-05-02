@@ -36,10 +36,9 @@
 
 double NetworkSystem::get_time ( ) 
 {
-	struct timespec t;
-	clock_gettime ( CLOCK_REALTIME, &t );
-	double nsec_comp = ( t.tv_nsec - m_refTime.tv_nsec );
-	return t.tv_sec - m_refTime.tv_sec + nsec_comp / 1.0e9;	
+	TimeX current_time;
+	current_time.SetTimeNSec ( );
+	return current_time.GetElapsedSec ( m_refTime );
 }
 
 void NetworkSystem::trace_setup ( const char* function_name )
@@ -49,7 +48,7 @@ void NetworkSystem::trace_setup ( const char* function_name )
 		debug_print ( "ERROR: Could not open trace file: Errno: ", errno );
 		return;
 	}
-	clock_gettime ( CLOCK_REALTIME, &m_refTime );
+	m_refTime.SetTimeNSec ( );
 	#ifdef __linux__
 		chmod ( function_name, S_IRWXO ); 
 	#endif
@@ -128,13 +127,13 @@ inline void NetworkSystem::SET_HOSTNAME ( )
 	struct in_addr addr;
 	char name [ 512 ];
 	if ( gethostname ( name, sizeof ( name ) ) != 0 ) {
-		netError ( "Cannot get local host name." );
+		netPrintError ( "Cannot get local host name." );
 	}
 	
 	#ifdef _WIN32
 		struct hostent* phe = gethostbyname ( name );
 		if ( phe == 0 ) {
-			netError ( "Bad host lookup in gethostbyname." );
+			netPrintError ( "Bad host lookup in gethostbyname." );
 		}
 		for ( int i = 0; phe->h_addr_list [ i ] != 0; ++i ) {
 			memcpy ( &addr, phe->h_addr_list [ i ], sizeof ( struct in_addr ) );
@@ -177,7 +176,7 @@ inline void NetworkSystem::SOCK_API_INIT ( )
 		if ( ( status = WSAStartup ( MAKEWORD ( 1,1 ), &WSAData ) ) == 0 ) {
 			verbose_print ( "Started Winsock." );
 		} else {
-			netError ( "Unable to start Winsock.");
+			netPrintError ( "Unable to start Winsock.");
 		}
 	#endif
 	TRACE_EXIT ( (__func__) );
@@ -313,9 +312,9 @@ inline void NetworkSystem::SOCK_UPDATE_ADDR ( int sock_i, bool src )
 		}
 		if ( s.src.type != NET_OFF ) {
 			ret = setsockopt ( s.socket, SOL_SOCKET, SO_BROADCAST,  (const char*) &optval, sizeof ( optval ) );
-			//if ( ret < 0 ) netError ( "Cannot set socket opt" );
+			//if ( ret < 0 ) netPrintError ( "Cannot set socket opt" );
 			ret = ioctl ( s.socket, FIONBIO, &ioval );
-			//if ( ret < 0 ) netError ( "Cannot set socket ctrl" );
+			//if ( ret < 0 ) netPrintError ( "Cannot set socket ctrl" );
 		}
 	#endif
 	
@@ -421,8 +420,7 @@ NetworkSystem::NetworkSystem ( )
 	m_userEventCallback = 0;
 	m_rcvSelectTimout.tv_sec = 0;
 	m_rcvSelectTimout.tv_usec = 1e3;
-	mLastClientConnectCheck.tv_sec = 0;
-	mLastClientConnectCheck.tv_usec = 0;
+	m_lastClientConnectCheck.SetTimeNSec ( );
 
 	m_security = NET_SECURITY_PLAIN_TCP;
 	m_tcpFallbackAllowed = true;
@@ -524,7 +522,7 @@ void NetworkSystem::netServerSetupHandshakeSSL ( int sock_i )
 	s.security = NET_SECURITY_FAIL; // Assume failure until end of this function
 	s.state = STATE_FAILED; 
 
-	if ( ( s.ctx = SSL_CTX_new ( TLS_server_method () ) ) == 0 ) {
+	if ( ( s.ctx = SSL_CTX_new ( TLS_server_method ( ) ) ) == 0 ) {
 		perror ( "get new ssl ctx failed" );
 		free_openssl ( s.socket );
 		TRACE_EXIT ( (__func__) );
@@ -612,6 +610,11 @@ void NetworkSystem::netServerAcceptSSL ( int sock_i )
 		handshake_print ( "Ready for safe transfer: %d", SSL_is_init_finished ( s.ssl ) );
 		s.state = STATE_CONNECTED;
 	}
+	if ( s.security == NET_SECURITY_FAIL ) {
+		netHandshakeError ( sock_i );
+	} else if ( s.state == STATE_CONNECTED ) {
+		netServerCompleteConnection ( sock_i );
+	}
 	TRACE_EXIT ( (__func__) );
 }
 	
@@ -688,7 +691,7 @@ void NetworkSystem::netServerAcceptClient ( int sock_i )
 	else if ( s.security == NET_SECURITY_OPENSSL ) {
 		netServerSetupHandshakeSSL ( cli_sock_i );
 		if ( s.security == NET_SECURITY_FAIL ) {
-			netTerminateSocket ( sock_i, 1 );
+			netHandshakeError ( sock_i );
 		}
 	}
 	TRACE_EXIT ( (__func__) ); 	
@@ -834,11 +837,7 @@ void NetworkSystem::netClientConnectSSL ( int sock_i )
 		s.state = STATE_CONNECTED;
 	}
 	if ( s.security == NET_SECURITY_FAIL ) {
-		if ( s.tcpFallback ) {
-			s.security = NET_SECURITY_PLAIN_TCP;
-			s.srvPort += 1;
-		}
-		netTerminateSocket ( sock_i, 1 );
+		netHandshakeError ( sock_i );
 	}
 	TRACE_EXIT ( (__func__) );
 }
@@ -892,7 +891,7 @@ int NetworkSystem::netClientConnectToServer ( str srv_name, netPort srv_port, bo
 		int result = getaddrinfo ( srv_name.c_str ( ), portname, 0, &pAddrInfo );
 		if ( result != 0 ) {
 			TRACE_EXIT ( (__func__) );
-			return netError ( "Unable to resolve server name: " + srv_name, result );
+			return netPrintError ( "Unable to resolve server name: " + srv_name, result );
 		}	
 		
 		char ipstr[ INET_ADDRSTRLEN ];
@@ -923,7 +922,7 @@ int NetworkSystem::netClientConnectToServer ( str srv_name, netPort srv_port, bo
 		cli_sock_i = netAddSocket ( NET_CLI, NET_TCP, NET_ENABLE, block, cli_addr, srv_addr );
 		if ( cli_sock_i == NET_ERR ) {	
 			TRACE_EXIT ( (__func__) );		
-			return netError ( "Unable to add socket." );
+			return netPrintError ( "Unable to add socket." );
 		}
 	}
 
@@ -950,11 +949,7 @@ int NetworkSystem::netClientConnectToServer ( str srv_name, netPort srv_port, bo
 	if ( s.security == NET_SECURITY_OPENSSL ) { // SSL handshake
 		netClientSetupHandshakeSSL ( cli_sock_i );
 		if ( s.security == NET_SECURITY_FAIL ) {	
-			if ( s.tcpFallback ) {
-				s.security = NET_SECURITY_PLAIN_TCP;
-				s.srvPort += 1;
-			}
-			netTerminateSocket ( cli_sock_i, 1 );
+			netHandshakeError ( cli_sock_i );
 		}
 	}
 	TRACE_EXIT ( (__func__) );
@@ -1141,9 +1136,24 @@ int NetworkSystem::netAddSocket ( int side, int mode, int state, bool block, Net
 
 	int n = m_socks.size ( );
 	m_socks.push_back ( s );
-	netUpdateSocket ( n );
+	netSocketAdd ( n );
 	TRACE_EXIT ( (__func__) );
 	return n;
+}
+
+int NetworkSystem::netHandshakeError ( int sock_i ) 
+{
+	TRACE_ENTER ( (__func__) );
+	NetSock& s = m_socks[ sock_i ];
+	int outcome = 0;
+	if ( s.tcpFallback ) {
+		s.security = NET_SECURITY_PLAIN_TCP;
+		s.srvPort += 1;
+	} else {
+		outcome = netTerminateSocket ( sock_i, 1 );
+	}
+	TRACE_EXIT ( (__func__) );
+	return outcome;
 }
 
 // Terminate Socket
@@ -1172,19 +1182,19 @@ int NetworkSystem::netTerminateSocket ( int sock_i, int force )
 		}
 		SOCK_CLOSE ( s.socket );
 		s.socket = 0;
-		netUpdateSocket ( sock_i );
+		netSocketAdd ( sock_i );
 		TRACE_EXIT ( (__func__) );
 		return 0;	
 	}
 	
 	SOCK_CLOSE ( s.socket );
-	s.state = NET_TERMINATED;
+	s.state = STATE_TERMINATED;
 	
 	// remove sockets at end of list
 	// --- FOR NOW, THIS IS NECESSARY ON CLIENT (which may have only 1 socket),
 	// BUT IN FUTURE CLIENTS SHOULD BE ABLE TO HAVE ANY NUMBER OF PREVIOUSLY TERMINATED SOCKETS
 	if ( m_socks.size ( ) > 0 ) {
-		while ( m_socks[ m_socks.size() -1 ].state == NET_TERMINATED ) {
+		while ( m_socks[ m_socks.size() -1 ].state == STATE_TERMINATED ) {
 			m_socks.erase ( m_socks.end ( ) -1 );
 		}
 	}
@@ -1317,12 +1327,10 @@ int NetworkSystem::netProcessQueue ( void )
 void NetworkSystem::netClientCheckConnectionHandshakes ( )
 {
 	TRACE_ENTER ( (__func__) );
-	struct timeval tv;
-	gettimeofday ( &tv, NULL );
-	long ms_passed = ( tv.tv_sec - mLastClientConnectCheck.tv_sec ) * 1000;
-	ms_passed += (tv.tv_usec - mLastClientConnectCheck.tv_usec) / 1000;
-	if ( ms_passed > m_reconnectInterval ) {
-		gettimeofday ( &mLastClientConnectCheck, NULL );
+	TimeX current_time;
+	current_time.SetTimeNSec ( );	
+	if ( current_time.GetElapsedMSec ( m_lastClientConnectCheck ) > m_reconnectInterval ) {
+		m_lastClientConnectCheck.SetTimeNSec ( );
 		for ( int sock_i = 1; sock_i < (int) m_socks.size ( ); sock_i++ ) {
 			NetSock& s = m_socks[ sock_i ];
 			if ( s.security == NET_SECURITY_OPENSSL && s.state == STATE_SSL_HANDSHAKE ) {
@@ -1342,7 +1350,7 @@ void NetworkSystem::netClientProcessIO ( )
 {
 	TRACE_ENTER ( (__func__) );
 	fd_set sockSet;
-	int rcv_events = netSocketRecvSelect ( &sockSet );
+	int rcv_events = netSocketSelectRead ( &sockSet );
 	NET_PERF_PUSH ( "findsocks" );
 	for ( int sock_i = 0; sock_i < (int) m_socks.size ( ); sock_i++ ) { 
 		if ( netSocketSetForRead ( &sockSet, sock_i ) ) {
@@ -1362,7 +1370,7 @@ void NetworkSystem::netServerProcessIO ( )
 {
 	TRACE_ENTER ( (__func__) );
 	fd_set sockSet;
-	int rcv_events = netSocketRecvSelect ( &sockSet );
+	int rcv_events = netSocketSelectRead ( &sockSet );
 	NET_PERF_PUSH ( "findsocks" );
 	for ( int sock_i = 0; sock_i < (int) m_socks.size ( ); sock_i++ ) { 
 		NetSock& s = m_socks[ sock_i ];
@@ -1374,11 +1382,6 @@ void NetworkSystem::netServerProcessIO ( )
 					netRecieveData ( sock_i );
 				} else {
 					netServerAcceptSSL ( sock_i );
-					if ( s.security == NET_SECURITY_FAIL ) {
-						netTerminateSocket ( sock_i, 1 );
-					} else if ( s.state == STATE_CONNECTED ) {
-						netServerCompleteConnection ( sock_i );
-					}
 				}
 			}
 		}
@@ -1599,7 +1602,7 @@ void NetworkSystem::netPrint ( bool verbose )
 				case NET_OFF:		stat = "off      ";	break;
 				case NET_ENABLE:	stat = "enable   "; break;
 				case STATE_CONNECTED:	stat = "connected"; break;
-				case NET_TERMINATED: stat = "terminatd"; break;
+				case STATE_TERMINATED: stat = "terminatd"; break;
 			};
 			src = netPrintAddr ( m_socks[n].src );
 			dst = netPrintAddr ( m_socks[n].dest );
@@ -1675,7 +1678,7 @@ bool NetworkSystem::netCheckError ( int result, int sock )
 	TRACE_ENTER ( (__func__) );
 	if ( SOCK_ERROR ( result ) ) {
 		netTerminateSocket ( sock ); // peer has shutdown (unexpected shutdown)
-		netError ( "Unexpected shutdown." );
+		netPrintError ( "Unexpected shutdown." );
 		TRACE_EXIT ( (__func__) );
 		return false;
 	}
@@ -1729,7 +1732,7 @@ bool NetworkSystem::netSend ( Event& e, int mode, int sock_i )
 	return netCheckError ( result, sock_i ); // Check connection
 }
 
-int NetworkSystem::netUpdateSocket ( int sock_i )
+int NetworkSystem::netSocketAdd ( int sock_i )
 {
 	TRACE_ENTER ( (__func__) );
 	NetSock& s = m_socks[ sock_i ];	    
@@ -1758,7 +1761,7 @@ int NetworkSystem::netSocketBind ( int sock_i )
 	verbose_print ( "Bind: %s, port %i", ( s->side==NET_CLI ) ? "cli" : "srv", s->src.port );
 	int result = bind ( s->socket, (sockaddr*) &s->src.addr, addr_size );
 	if ( netIsError(result) ) {
-		netError ( "Cannot bind to source.");
+		netPrintError ( "Cannot bind to source.");
 	}
 	TRACE_EXIT ( (__func__) );
 	return result;
@@ -1776,7 +1779,7 @@ int NetworkSystem::netSocketConnect ( int sock_i )
 	result = connect ( s->socket, (sockaddr*) &s->dest.addr, addr_size );
 	if (result < 0) {
 		TRACE_EXIT ( (__func__) );
-		return netError ( "Socket connect error." );
+		return netPrintError ( "Socket connect error." );
 	}	
 	TRACE_EXIT ( (__func__) );
 	return 0;
@@ -1789,7 +1792,7 @@ int NetworkSystem::netSocketListen ( int sock_i )
 	verbose_print ( "Listen: port %i", s.src.port );
 	int result = listen ( s.socket, SOMAXCONN );
 	if ( SOCK_ERROR ( result ) ) {
-		netError ( "TCP Listen error\n" );
+		netPrintError ( "TCP Listen error\n" );
 	}
 	TRACE_EXIT ( (__func__) );
 	return result;
@@ -1804,7 +1807,7 @@ int NetworkSystem::netSocketAccept ( int sock_i, SOCKET& tcp_sock, netIP& cli_ip
 	tcp_sock = accept ( s.socket, (sockaddr*) &sin, (socklen_t *) (&addr_size) );
 
 	if ( SOCK_INVALID ( tcp_sock ) ) {
-		netError ( "TCP Accept error" );
+		netPrintError ( "TCP Accept error" );
 		TRACE_EXIT ( (__func__) );
 		return -1;
 	}
@@ -1848,7 +1851,7 @@ int NetworkSystem::netSocketRecv ( int sock_i, char* buf, int buflen, int& recvl
 	}
 	if ( result == 0 ) {
 		netTerminateSocket ( sock_i ); // Peer has unexpected shutdown
-		netError ( "Unexpected shutdown", result );
+		netPrintError ( "Unexpected shutdown", result );
 		TRACE_EXIT ( (__func__) );
 		return ECONNREFUSED;
 	}	
@@ -1888,7 +1891,7 @@ bool NetworkSystem::netSocketSetForRead ( fd_set* sockSet, int sock_i )
 	#endif
 }
 
-int NetworkSystem::netSocketRecvSelect ( fd_set* sockSet ) 
+int NetworkSystem::netSocketSelectRead ( fd_set* sockSet ) 
 {
 	TRACE_ENTER ( (__func__) );
 	if ( m_socks.size ( ) == 0 ) {
@@ -1901,7 +1904,7 @@ int NetworkSystem::netSocketRecvSelect ( fd_set* sockSet )
 	FD_ZERO ( sockSet );
 	for ( int n = 0; n < (int) m_socks.size ( ); n++ ) { // Get all sockets that are Enabled or Connected
 		NetSock& s = m_socks[ n ];
-		if ( s.state != NET_OFF && s.state != NET_TERMINATED ) { // look for NET_ENABLE or NET_CONNECT
+		if ( s.state != NET_OFF && s.state != STATE_TERMINATED ) { // look for NET_ENABLE or NET_CONNECT
 			if ( s.state < STATE_SSL_HANDSHAKE || s.security == NET_SECURITY_PLAIN_TCP ) { 
 				FD_SET ( s.socket, sockSet );
 				if ( (int) s.socket > maxfd ) maxfd = s.socket;
@@ -1931,7 +1934,7 @@ int NetworkSystem::netSocketRecvSelect ( fd_set* sockSet )
 	return result;
 }
 
-int NetworkSystem::netError ( str msg, int error_id )
+int NetworkSystem::netPrintError ( str msg, int error_id )
 {
 	TRACE_ENTER ( (__func__) );
 	str error_str = GET_ERROR_MSH ( error_id );
@@ -1977,7 +1980,7 @@ netIP NetworkSystem::getStrToIP ( str name )
 // -> MISCELLANEOUS CONFIG API <-
 //----------------------------------------------------------------------------------------------------------------------
 
-bool NetworkSystem::setSelectInterval ( int time_ms ) 
+bool NetworkSystem::netSetSelectInterval ( int time_ms ) 
 {
 	m_rcvSelectTimout.tv_sec = time_ms / 1000;
 	m_rcvSelectTimout.tv_usec = ( time_ms % 1000 ) * 1000; 
@@ -1987,7 +1990,7 @@ bool NetworkSystem::setSelectInterval ( int time_ms )
 // -> SECURITY CONFIG API <-
 //----------------------------------------------------------------------------------------------------------------------
 
-bool NetworkSystem::setReconnectInterval ( int time_ms )
+bool NetworkSystem::netSetReconnectInterval ( int time_ms )
 {
 	if ( m_hostType == 's' ) {
 		return false;
@@ -1996,13 +1999,13 @@ bool NetworkSystem::setReconnectInterval ( int time_ms )
 	return true;
 }
 
-bool NetworkSystem::setReconnectLimit ( int limit )
+bool NetworkSystem::netSetReconnectLimit ( int limit )
 {
 	m_reconnectLimit = limit;
 	return true;
 }
 
-bool NetworkSystem::setReconnectLimit ( int limit, int sock_i )
+bool NetworkSystem::netSetReconnectLimit ( int limit, int sock_i )
 {
 	if ( invalid_socket_index ( sock_i ) ) {
 		return false;
@@ -2014,37 +2017,37 @@ bool NetworkSystem::setReconnectLimit ( int limit, int sock_i )
 
 //----------------------------------------------------------------------------------------------------------------------
 
-bool NetworkSystem::setSecurityLevel ( int level )
+bool NetworkSystem::netSetSecurityLevel ( int level )
 {
 	if ( level == NET_SECURITY_PLAIN_TCP ) {
-		return setSecurityToPlainTCP ( );
+		return netSetSecurityToPlainTCP ( );
 	}
 	if ( level == NET_SECURITY_OPENSSL ) {
-		return setSecurityToOpenSSL ( );
+		return netSetSecurityToOpenSSL ( );
 	}
 	return false;
 }
 
-bool NetworkSystem::setSecurityLevel ( int level, int sock_i )
+bool NetworkSystem::netSetSecurityLevel ( int level, int sock_i )
 {
 	if ( level == NET_SECURITY_PLAIN_TCP ) {
-		return setSecurityToPlainTCP ( sock_i );
+		return netSetSecurityToPlainTCP ( sock_i );
 	}
 	if ( level == NET_SECURITY_OPENSSL ) {
-		return setSecurityToOpenSSL ( sock_i );
+		return netSetSecurityToOpenSSL ( sock_i );
 	}
 	return false;
 }
 
 //----------------------------------------------------------------------------------------------------------------------
 
-bool NetworkSystem::setSecurityToPlainTCP ( )
+bool NetworkSystem::netSetSecurityToPlainTCP ( )
 {
 	m_security = NET_SECURITY_PLAIN_TCP;
 	return true;
 }
 
-bool NetworkSystem::setSecurityToPlainTCP ( int sock_i )
+bool NetworkSystem::netSetSecurityToPlainTCP ( int sock_i )
 {
 	if ( invalid_socket_index ( sock_i ) ) {
 		return false;
@@ -2055,7 +2058,7 @@ bool NetworkSystem::setSecurityToPlainTCP ( int sock_i )
 
 //----------------------------------------------------------------------------------------------------------------------
 
-bool NetworkSystem::setSecurityToOpenSSL ( )
+bool NetworkSystem::netSetSecurityToOpenSSL ( )
 {
 	#ifdef BUILD_OPENSSL
 		m_security = NET_SECURITY_OPENSSL;
@@ -2065,7 +2068,7 @@ bool NetworkSystem::setSecurityToOpenSSL ( )
 	#endif
 }
 
-bool NetworkSystem::setSecurityToOpenSSL ( int sock_i )
+bool NetworkSystem::netSetSecurityToOpenSSL ( int sock_i )
 {
 	if ( invalid_socket_index ( sock_i ) ) {
 		return false;
@@ -2080,13 +2083,13 @@ bool NetworkSystem::setSecurityToOpenSSL ( int sock_i )
 
 //----------------------------------------------------------------------------------------------------------------------
 
-bool NetworkSystem::allowFallbackToPlainTCP ( bool allow )
+bool NetworkSystem::netAllowFallbackToPlainTCP ( bool allow )
 {
 	m_tcpFallbackAllowed = allow;
 	return true;
 }
 
-bool NetworkSystem::allowFallbackToPlainTCP ( bool allow, int sock_i )
+bool NetworkSystem::netAllowFallbackToPlainTCP ( bool allow, int sock_i )
 {
 	if ( invalid_socket_index ( sock_i ) ) {
 		return false;
@@ -2097,7 +2100,7 @@ bool NetworkSystem::allowFallbackToPlainTCP ( bool allow, int sock_i )
 
 //----------------------------------------------------------------------------------------------------------------------
 
-bool NetworkSystem::setPathToPublicKey ( str path )
+bool NetworkSystem::netSetPathToPublicKey ( str path )
 {
 	if ( ! std::filesystem::is_regular_file ( path ) ) {
 		debug_print ( "File path to public key is invalid: %s", path );
@@ -2107,7 +2110,7 @@ bool NetworkSystem::setPathToPublicKey ( str path )
 	return true;
 }
 
-bool NetworkSystem::setPathToPrivateKey ( str path )
+bool NetworkSystem::netSetPathToPrivateKey ( str path )
 {
 	if ( ! std::filesystem::is_regular_file ( path ) ) {
 		debug_print ( "File path to private key is invalid: %s", path );
@@ -2117,7 +2120,7 @@ bool NetworkSystem::setPathToPrivateKey ( str path )
 	return true;
 }
 
-bool NetworkSystem::setPathToCertDir ( str path )
+bool NetworkSystem::netSetPathToCertDir ( str path )
 {
 	if ( ! std::filesystem::is_directory ( path ) ) {
 		debug_print ( "Path to certificate folder is invalid: %s", path );
@@ -2127,7 +2130,7 @@ bool NetworkSystem::setPathToCertDir ( str path )
 	return true;
 }
 
-bool NetworkSystem::setPathToCertFile ( str path )
+bool NetworkSystem::netSetPathToCertFile ( str path )
 {
 	if ( ! std::filesystem::is_regular_file ( path ) ) {
 		debug_print ( "File path to certificate is invalid: %s", path );
