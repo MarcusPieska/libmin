@@ -118,7 +118,7 @@ public:
 	
 	// Server API
 	void netStartServer ( netPort srv_port, int security = NET_SECURITY_UNDEF );
-	void netServerListen ( int sock );
+	void netServerAcceptClient ( int sock_i );
 
 	// Client API
 	void netStartClient ( netPort srv_port, str srv_addr="127.0.0.1" );
@@ -170,18 +170,17 @@ private: // Functions
 	// Handling non-blocking OpenSSL handshake
 	#ifdef BUILD_OPENSSL
 		void free_openssl ( int sock_i ); 
-		int checkOpensslError ( int sock_i, int ret ); 
-		void setupServerOpenssl ( int sock_i ); 
-		void acceptServerOpenssl ( int sock_i );
-		void checkServerOpensslHandshake ( int sock_i );
-		void setupClientOpenssl ( int sock_i ); 
-		void connectClientOpenssl ( int sock_i );	
-		void checkClientOpensslHandshake ( int sock_i );	
+		int netCheckOpensslError ( int sock_i, int ret ); 
+		void netServerSetupHandshakeSSL ( int sock_i ); 
+		void netServerAcceptSSL ( int sock_i );
+		void netClientSetupHandshakeSSL ( int sock_i ); 
+		void netClientConnectSSL ( int sock_i );		
     #endif
 
 	// Receive logic
-	int netClientProcessIO ( );
-	int netServerProcessIO ( );
+	void netClientCheckConnectionHandshakes ( );
+	void netClientProcessIO ( );
+	void netServerProcessIO ( );
 
 	// Abtract socket functions
 	int netAddSocket ( int side, int mode, int state, bool block, NetAddr src, NetAddr dest );
