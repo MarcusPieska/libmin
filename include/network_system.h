@@ -79,6 +79,11 @@ class HELPAPI NetworkSystem {
 	
 #define VALID_INDEX(index) ((index) >= 0 && (index) < m_socks.size())
 	
+#ifdef _WIN32
+	typedef int socklen_t;
+	typedef struct fd_set fd_set;
+#endif
+	
 public:
 	NetworkSystem ( );
 
@@ -112,21 +117,18 @@ public:
 	bool setPathToCertFile ( str path );
 	
 	// Server API
-	void netStartServer ( netPort srv_port );
+	void netStartServer ( netPort srv_port, int security = NET_SECURITY_UNDEF );
 	void netServerListen ( int sock );
 
 	// Client API
 	void netStartClient ( netPort srv_port, str srv_addr="127.0.0.1" );
-	void checkClientConnections ( );
-	int netClientConnectToServer ( str srv_name, netPort srv_port, bool blocking = false );
+	int netClientConnectToServer ( str srv_name, netPort srv_port, bool block = false, int sock_i = -1 );
 	int netCloseConnection ( int sock_i );
 	int netCloseAll ( );
 
 	// Event processing
 	void netProcessEvents ( Event& e );
 	int netProcessQueue ( void );
-	int netRecieveSelect ( );
-	int netRecieveAllData ( );
 	int netRecieveData ( int sock_i );
 	Event netMakeEvent ( eventStr_t name, eventStr_t sys );
 	bool netSend ( Event& e );
@@ -163,25 +165,6 @@ private: // MP: Move this stuff
 
 	funcEventHandler			m_userEventCallback;	// User event handler
 
-	// Incoming event data
-	int							m_dataLen;
-	int							m_eventLen;
-	Event						m_event;	// Incoming event
-
-	// Network buffers
-	int							m_bufferLen;
-	char*						m_bufferPtr;
-	char						m_buffer[ NET_BUFSIZE ];
-	int							m_maxPacketLen;
-
-	#ifdef _WIN32
-		struct fd_set			m_sockSet;
-	#elif __ANDROID__
-		fd_set				    m_sockSet;
-	#elif __linux__
-		fd_set				    m_sockSet;
-	#endif
-
 private: // Functions
 
 	// Handling non-blocking OpenSSL handshake
@@ -196,8 +179,12 @@ private: // Functions
 		void checkClientOpensslHandshake ( int sock_i );	
     #endif
 
+	// Receive logic
+	int netClientProcessIO ( );
+	int netServerProcessIO ( );
+
 	// Abtract socket functions
-	int netAddSocket ( int side, int mode, int status, bool block, NetAddr src, NetAddr dest );
+	int netAddSocket ( int side, int mode, int state, bool block, NetAddr src, NetAddr dest );
 	int netFindSocket ( int side, int mode, int type );
 	int netFindSocket ( int side, int mode, NetAddr dest );
 	int netFindOutgoingSocket ( bool bTcp );
@@ -205,9 +192,6 @@ private: // Functions
 	bool netIsError ( int result );	// Socket-specific error check
 	void netReportError ( int result );
 	str netPrintError ( int ret, str msg, SSL* sslsock=0x0 );
-	bool usableConnection ( int sock_i );
-	bool sockSetForRead ( int sock_i );
-	void handleConnection ( int sock_i );
 
 	// Low level handling of sockets
 	void netStartSocketAPI ( );
@@ -218,13 +202,16 @@ private: // Functions
 	int netSocketListen ( int sock_i );
 	int netSocketAccept ( int sock_i,  SOCKET& tcp_sock, netIP& cli_ip, netPort& cli_port  );	
 	int netSocketRecv ( int sock_i, char* buf, int buflen, int& recvlen); 
+	bool netSocketIsConnected ( int sock_i );
+	bool netSocketSetForRead ( fd_set* sockSet, int sock_i );
+	int netSocketRecvSelect ( fd_set* sockSet );
 
 	// Short helpers, used to simplify the program elsewhere
 	void sleep_ms ( int time_ms );
-	unsigned long get_read_ready_bytes ( int sock_h );
-	void make_sock_no_delay ( int sock_h );
-	void make_sock_block ( int sock_h );
-	void make_sock_non_block ( int sock_h );
+	unsigned long get_read_ready_bytes ( SOCKET sock_h );
+	void make_sock_no_delay ( SOCKET sock_h );
+	void make_sock_block ( SOCKET sock_h );
+	void make_sock_non_block ( SOCKET sock_h );
 	bool invalid_socket_index ( int sock_i );
 	
 	// Handling tracing and logging
@@ -242,13 +229,13 @@ private: // Functions
 	// Cross-platform socket interactions
 	void SET_HOSTNAME ( );
 	void SOCK_API_INIT ( );
-	void SOCK_MAKE_BLOCK ( int sock_h, bool block = false );
-	unsigned long SOCK_READ_BYTES ( int sock_h );
-	int SOCK_INVALID ( int sock );
-	int SOCK_ERROR ( int sock );
+	void SOCK_MAKE_BLOCK ( SOCKET sock_h, bool block = false );
+	unsigned long SOCK_READ_BYTES ( SOCKET sock_h );
+	int SOCK_INVALID ( SOCKET sock_h );
+	int SOCK_ERROR ( SOCKET sock_h );
 	str GET_ERROR_MSH ( int& error_id );
-	void SOCK_UPDATE_ADDR ( int sock_i, bool src = true );
-	void SOCK_CLOSE ( int sock_h );
+	void SOCK_UPDATE_ADDR ( SOCKET sock_i, bool src = true );
+	void SOCK_CLOSE ( SOCKET sock_h );
 	str GET_IP_STR ( netIP ip );
 	
 private: // State
@@ -264,6 +251,17 @@ private: // State
 	// Event related
 	EventPool* m_eventPool; 
 	EventQueue m_eventQueue;
+
+	// Incoming event data
+	int	m_dataLen;
+	int	m_eventLen;
+	Event m_event; // Incoming event
+
+	// Network buffers
+	int m_bufferLen;
+	char* m_bufferPtr;
+	char m_buffer[ NET_BUFSIZE ];
+	int	m_maxPacketLen;
 	
 	// Debug and trace related
 	int	m_check;

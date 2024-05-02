@@ -57,7 +57,8 @@
 	#define NET_TCP						0 // modes
 	#define NET_UDP						1	
 	
-	#define NET_SECURITY_FAIL			-1 // security types
+	#define NET_SECURITY_UNDEF			-2 // security types
+	#define NET_SECURITY_FAIL			-1 
 	#define NET_SECURITY_PLAIN_TCP		0
 	#define NET_SECURITY_OPENSSL		1
 	#define NET_SECURITY_DTLS			2
@@ -67,13 +68,12 @@
 	#define NET_SEARCH					2	
 	#define NET_CONNECT					3	
 
-	#define NET_OFF						4 // stats
-	#define NET_ENABLE					5
-	#define NET_SSL_HS_NOT_STARTED		6
-	#define NET_SSL_HS_STARTED			7
-	#define NET_SSL_HS_FINISHED			8
-	#define NET_CONNECTED				9
-	#define NET_TERMINATED				10
+	#define NET_OFF						0 // stats
+	#define NET_ENABLE					1
+	#define STATE_SSL_HANDSHAKE			2
+	#define STATE_CONNECTED				3
+	#define STATE_FAILED				5
+	#define NET_TERMINATED				4
 	
 
 	// Network Address Abstraction
@@ -113,7 +113,7 @@
 		eventStr_t			sys;				// system
 		char				side;				// side (client, server)
 		char				mode;				// mode (TCP, UDP)		
-		char				status;				// stat (off, connected)
+		char				state;				// stat (off, connected)
 		timeval				timeout;		
 		NetAddr				src;				// source socket (ip, port, name, sockID)		
 		NetAddr				dest;				// dest socket (ip, port, name, sockID)	
