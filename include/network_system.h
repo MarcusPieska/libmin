@@ -117,12 +117,17 @@ public:
 	bool netSetPathToCertFile ( str path );
 	
 	// Server API
-	void netStartServer ( netPort srv_port, int security = NET_SECURITY_UNDEF );
+	void netServerStart ( netPort srv_port, int security = NET_SECURITY_UNDEF );
 	void netServerAcceptClient ( int sock_i );
+	void netServerProcessIO ( );
 
 	// Client API
-	void netStartClient ( netPort srv_port, str srv_addr="127.0.0.1" );
+	void netClientStart ( netPort srv_port, str srv_addr="127.0.0.1" );
 	int netClientConnectToServer ( str srv_name, netPort srv_port, bool block = false, int sock_i = -1 );
+	void netClientCheckConnectionHandshakes ( );
+	void netClientProcessIO ( );
+	
+	// Client & server common API
 	int netCloseConnection ( int sock_i );
 	int netCloseAll ( );
 
@@ -167,7 +172,7 @@ private: // Functions
 
 	// Handling non-blocking OpenSSL handshake
 	#ifdef BUILD_OPENSSL
-		void free_openssl ( int sock_i ); 
+		void netFreeSSL ( int sock_i ); 
 		int netCheckOpensslError ( int sock_i, int ret ); 
 		void netServerSetupHandshakeSSL ( int sock_i ); 
 		void netServerAcceptSSL ( int sock_i );
@@ -175,18 +180,14 @@ private: // Functions
 		void netClientConnectSSL ( int sock_i );		
     #endif
 
-	// Receive logic
-	void netClientCheckConnectionHandshakes ( );
-	void netClientProcessIO ( );
-	void netServerProcessIO ( );
-
 	// Abtract socket functions
 	int netAddSocket ( int side, int mode, int state, bool block, NetAddr src, NetAddr dest );
 	int netFindSocket ( int side, int mode, int type );
 	int netFindSocket ( int side, int mode, NetAddr dest );
 	int netFindOutgoingSocket ( bool bTcp );
-	int netHandshakeError ( int sock_i );
-	int netTerminateSocket ( int sock_i, int force=0 );
+	int netManageHandshakeError ( int sock_i );
+	int netManageFatalError ( int sock_i, int force=0 );
+	int netDeleteSocket ( int sock_i, int force=0 );
 	bool netIsError ( int result );	// Socket-specific error check
 	void netReportError ( int result );
 	str netPrintError ( int ret, str msg, SSL* sslsock=0x0 );
@@ -225,16 +226,16 @@ private: // Functions
 	void net_perf_pop ( );
 	
 	// Cross-platform socket interactions
-	void SET_HOSTNAME ( );
-	void SOCK_API_INIT ( );
-	void SOCK_MAKE_BLOCK ( SOCKET sock_h, bool block = false );
-	unsigned long SOCK_READ_BYTES ( SOCKET sock_h );
-	int SOCK_INVALID ( SOCKET sock_h );
-	int SOCK_ERROR ( SOCKET sock_h );
-	str GET_ERROR_MSH ( int& error_id );
-	void SOCK_UPDATE_ADDR ( SOCKET sock_i, bool src = true );
-	void SOCK_CLOSE ( SOCKET sock_h );
-	str GET_IP_STR ( netIP ip );
+	void CX_SetHostname ( );
+	void CX_SocketApiInit ( );
+	void CX_SocketMakeBlock ( SOCKET sock_h, bool block = false );
+	unsigned long CX_SocketReadBytes ( SOCKET sock_h );
+	int CX_SocketIvalid ( SOCKET sock_h );
+	int CX_SocketError ( SOCKET sock_h );
+	str CX_GetErrorMsg ( int& error_id );
+	void CX_SocketUpdateAddr ( SOCKET sock_i, bool src = true );
+	void CX_SocketClose ( SOCKET sock_h );
+	str CX_GetIpStr ( netIP ip );
 	
 private: // State
 	
