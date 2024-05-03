@@ -293,11 +293,11 @@ inline void NetworkSystem::SOCK_UPDATE_ADDR ( int sock_i, bool src )
 	#ifdef _WIN32 // Windows
 		int case_key = ( src ) ? s.src.type : s.dest.type;
 		switch ( case_key ) {
-			case NET_BROADCAST:		s.src.ip.S_un.S_addr = htonl( INADDR_BROADCAST ); 	optval = 1;	break;
-			case NET_ANY:			s.src.ip.S_un.S_addr = htonl( INADDR_ANY ); 		optval = 0;	break;
-			case NET_CONNECT:		s.src.ip.S_un.S_addr = s.src.ipL; 					optval = 0; break;
+			case NTYPE_BROADCAST:		s.src.ip.S_un.S_addr = htonl( INADDR_BROADCAST ); 	optval = 1;	break;
+			case NTYPE_ANY:			s.src.ip.S_un.S_addr = htonl( INADDR_ANY ); 		optval = 0;	break;
+			case NTYPE_CONNECT:		s.src.ip.S_un.S_addr = s.src.ipL; 					optval = 0; break;
 		};
-		if ( s.src.type != NET_OFF ) {
+		if ( s.src.type != STATE_NONE ) {
 			if ( s.broadcast ) {
 				ret = setsockopt ( s.socket, SOL_SOCKET, SO_BROADCAST,  (const char*) &optval, sizeof ( optval ) );	
 			}
@@ -306,11 +306,11 @@ inline void NetworkSystem::SOCK_UPDATE_ADDR ( int sock_i, bool src )
 	#else // Linux and others
 		int case_key = ( src ) ? s.mode : s.dest.type;
 		switch ( case_key ) {
-			case NET_BROADCAST: 	s.src.ip.s_addr = htonl( INADDR_BROADCAST );		optval = 1; break;
-			case NET_ANY:			s.src.ip.s_addr = htonl( INADDR_ANY ); 				optval = 0;	break;
-			case NET_CONNECT:		s.src.ip.s_addr = s.src.ipL; 						optval = 0;	break;
+			case NTYPE_BROADCAST: 	s.src.ip.s_addr = htonl( INADDR_BROADCAST );		optval = 1; break;
+			case NTYPE_ANY:			s.src.ip.s_addr = htonl( INADDR_ANY ); 				optval = 0;	break;
+			case NTYPE_CONNECT:		s.src.ip.s_addr = s.src.ipL; 						optval = 0;	break;
 		}
-		if ( s.src.type != NET_OFF ) {
+		if ( s.src.type != STATE_NONE ) {
 			ret = setsockopt ( s.socket, SOL_SOCKET, SO_BROADCAST,  (const char*) &optval, sizeof ( optval ) );
 			//if ( ret < 0 ) netPrintError ( "Cannot set socket opt" );
 			ret = ioctl ( s.socket, FIONBIO, &ioval );
@@ -635,9 +635,9 @@ void NetworkSystem::netStartServer ( netPort srv_port, int security )
 	m_hostType = 's';
 	netIP srv_anyip = inet_addr ( "0.0.0.0" );
 	
-	NetAddr addr1 ( NET_ANY, m_hostName, srv_anyip, srv_port );
-	NetAddr addr2 ( NET_BROADCAST, "", 0, srv_port );
-	int srv_sock_i = netAddSocket ( NET_SRV, NET_TCP, NET_ENABLE, false, addr1, addr2 );
+	NetAddr addr1 ( NTYPE_ANY, m_hostName, srv_anyip, srv_port );
+	NetAddr addr2 ( NTYPE_BROADCAST, "", 0, srv_port );
+	int srv_sock_i = netAddSocket ( NET_SRV, NET_TCP, STATE_START, false, addr1, addr2 );
 	const char reuse = 1;
 	if ( setsockopt( m_socks[ srv_sock_i ].socket, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof ( int ) ) < 0 ) {	
 		handshake_print ( "netSys Error: Setting server socket as SO_REUSEADDR." );
@@ -654,7 +654,7 @@ void NetworkSystem::netStartServer ( netPort srv_port, int security )
 void NetworkSystem::netServerAcceptClient ( int sock_i )
 {
 	TRACE_ENTER ( (__func__) );
-	/* int srv_sock_svc = netFindSocket ( NET_SRV, NET_TCP, NET_ANY ); // MP: Check that this is OK
+	/* int srv_sock_svc = netFindSocket ( NET_SRV, NET_TCP, NTYPE_ANY ); // MP: Check that this is OK
 	if ( srv_sock_svc == -1 ) {
 		netPrintError ( 0, "Unable to find server listen socket." );
 	} */
@@ -673,9 +673,9 @@ void NetworkSystem::netServerAcceptClient ( int sock_i )
 	}
 
 	netIP srv_ip = m_hostIp; // Listen/accept on ANY address (0.0.0.0), final connection needs the server IP
-	NetAddr addr1 ( NET_CONNECT, srv_name, srv_ip, srv_port );
-	NetAddr addr2 ( NET_CONNECT, "", cli_ip, cli_port );
-	int cli_sock_i = netAddSocket ( NET_SRV, NET_TCP, NET_CONNECT, false, addr1, addr2 ); // Create new socket
+	NetAddr addr1 ( NTYPE_CONNECT, srv_name, srv_ip, srv_port );
+	NetAddr addr2 ( NTYPE_CONNECT, "", cli_ip, cli_port );
+	int cli_sock_i = netAddSocket ( NET_SRV, NET_TCP, NTYPE_CONNECT, false, addr1, addr2 ); // Create new socket
 
 	NetSock& s = m_socks[ cli_sock_i ];
 	make_sock_non_block ( sock_h );
@@ -683,7 +683,7 @@ void NetworkSystem::netServerAcceptClient ( int sock_i )
 	s.socket = sock_h; // Assign literal socket
 	s.dest.ipL = cli_ip; // Assign client IP
 	s.dest.port = cli_port;	// Assign client port
-	s.state = NET_ENABLE;
+	s.state = STATE_START;
 
 	if ( s.security == NET_SECURITY_PLAIN_TCP ) { // Complete TCP or SSL connection
 		netServerCompleteConnection ( cli_sock_i );
@@ -700,7 +700,7 @@ void NetworkSystem::netServerAcceptClient ( int sock_i )
 void NetworkSystem::netServerCompleteConnection ( int sock_i )
 {
 	TRACE_ENTER ( (__func__) );
-	int srv_sock_svc = netFindSocket ( NET_SRV, NET_TCP, NET_ANY );
+	int srv_sock_svc = netFindSocket ( NET_SRV, NET_TCP, NTYPE_ANY );
 	if ( srv_sock_svc == -1 ) {
 	   netPrintError ( 0, "Unable to find server listen socket." );
 	}
@@ -715,7 +715,7 @@ void NetworkSystem::netServerCompleteConnection ( int sock_i )
 	e.attachInt64 ( m_hostIp ); // Server IP
 	e.attachInt64 ( srv_port ); // Server port
 	e.attachInt ( sock_i ); // Connection ID (goes back to the client)
-	netSend ( e, NET_CONNECT, sock_i ); // Send TCP connected event to client
+	netSend ( e, NTYPE_CONNECT, sock_i ); // Send TCP connected event to client
 
 	Event ue = new_event ( 120, 'app ', 'sOkT', 0, m_eventPool ); // Inform the user-app (server) of the event	
 	ue.attachInt ( sock_i );
@@ -862,7 +862,7 @@ void NetworkSystem::netStartClient ( netPort cli_port, str srv_addr )
 	struct HELPAPI NetAddr netAddr = NetAddr ( ); // Start a TCP listen socket on Client
 	netAddr.convertIP ( ntohl ( inet_addr ( srv_addr.c_str ( ) ) ) );
 	netAddr.ipL = inet_addr ( srv_addr.c_str ( ) );
-	netAddSocket ( NET_CLI, NET_TCP, NET_OFF, false, NetAddr ( NET_ANY, m_hostName, m_hostIp, cli_port ), netAddr );
+	netAddSocket ( NET_CLI, NET_TCP, STATE_NONE, false, NetAddr ( NTYPE_ANY, m_hostName, m_hostIp, cli_port ), netAddr );
 	TRACE_EXIT ( (__func__) );
 }
 
@@ -910,16 +910,16 @@ int NetworkSystem::netClientConnectToServer ( str srv_name, netPort srv_port, bo
 		srv_ip = getStrToIP ( ipstr );
 	}
 
-	cli_sock_svc = netFindSocket ( NET_CLI, NET_TCP, NET_ANY ); // Find a local TCP socket service
+	cli_sock_svc = netFindSocket ( NET_CLI, NET_TCP, NTYPE_ANY ); // Find a local TCP socket service
 	cli_name = m_socks[ cli_sock_svc ].src.name;
 	cli_port = m_socks[ cli_sock_svc ].src.port;
 	cli_ip = m_hostIp;
 
-	NetAddr srv_addr = NetAddr ( NET_CONNECT, srv_name, srv_ip, srv_port ); // Find or create socket
+	NetAddr srv_addr = NetAddr ( NTYPE_CONNECT, srv_name, srv_ip, srv_port ); // Find or create socket
 	cli_sock_i = netFindSocket ( NET_CLI, NET_TCP, srv_addr );
 	if ( cli_sock_i == NET_ERR ) { 
-		NetAddr cli_addr = NetAddr ( NET_CONNECT, cli_name, cli_ip, cli_port );
-		cli_sock_i = netAddSocket ( NET_CLI, NET_TCP, NET_ENABLE, block, cli_addr, srv_addr );
+		NetAddr cli_addr = NetAddr ( NTYPE_CONNECT, cli_name, cli_ip, cli_port );
+		cli_sock_i = netAddSocket ( NET_CLI, NET_TCP, STATE_START, block, cli_addr, srv_addr );
 		if ( cli_sock_i == NET_ERR ) {	
 			TRACE_EXIT ( (__func__) );		
 			return netPrintError ( "Unable to add socket." );
@@ -993,7 +993,7 @@ int NetworkSystem::netCloseConnection ( int sock_i )
 	}
 	NetSock& s = m_socks[ sock_i ];
 	if ( s.side == NET_CLI ) {
-		if ( s.mode == NET_CONNECT ) { // Client informs server we are done		
+		if ( s.mode == NTYPE_CONNECT ) { // Client informs server we are done		
 			Event e = netMakeEvent ( 'sExT', 'net ' );
 			e.attachUInt ( m_socks [ sock_i ].dest.sock );
 			e.attachUInt ( sock_i ); 
@@ -1001,7 +1001,7 @@ int NetworkSystem::netCloseConnection ( int sock_i )
 			netProcessQueue ( ); 
 		}
 	} else { 
-		if ( s.mode == NET_CONNECT ) { // Server inform client we are done
+		if ( s.mode == NTYPE_CONNECT ) { // Server inform client we are done
 			int dest_sock = s.dest.sock;
 			Event e = netMakeEvent ( 'cExT', 'net ' );
 			e.attachUInt ( s.dest.sock ); 
@@ -1170,12 +1170,12 @@ int NetworkSystem::netTerminateSocket ( int sock_i, int force )
 	}
 	NetSock& s = m_socks[ sock_i ];
 	verbose_print ( "netTerminating: %d", sock_i );
-	if ( s.state != NET_CONNECT && s.state != STATE_CONNECTED && force == 0 ) {
+	if ( s.state != NTYPE_CONNECT && s.state != STATE_CONNECTED && force == 0 ) {
 		 TRACE_EXIT ( (__func__) );
 		 return 0;
 	}
 	if ( m_hostType == 'c' && s.reconnectBudget > 0 ) {
-		s.state = NET_ENABLE;
+		s.state = STATE_START;
 		if ( s.ctx != 0 ) {
 			free_openssl ( sock_i ); 
 			handshake_print ( "Call to free old context made (1)" );
@@ -1375,7 +1375,7 @@ void NetworkSystem::netServerProcessIO ( )
 	for ( int sock_i = 0; sock_i < (int) m_socks.size ( ); sock_i++ ) { 
 		NetSock& s = m_socks[ sock_i ];
 		if ( netSocketSetForRead ( &sockSet, sock_i ) ) {
-			if ( s.src.type == NET_ANY ) { // Listen for TCP connections on socket
+			if ( s.src.type == NTYPE_ANY ) { // Listen for TCP connections on socket
 				netServerAcceptClient ( sock_i );
 			} else {
 				if ( s.security == NET_SECURITY_PLAIN_TCP || s.state == STATE_CONNECTED ) {
@@ -1515,7 +1515,7 @@ bool NetworkSystem::netSend ( Event& e )
 	}
 
 	//dbgprintf ( "%s send: name %s, len %d (%d data)\n", nameToStr(m_hostType).c_str(), nameToStr(e->getName()).c_str(), e->getEventLength(), e->getDataLength() );
-	int result = netSend ( e, NET_CONNECT, sock );
+	int result = netSend ( e, NTYPE_CONNECT, sock );
 	TRACE_EXIT ( (__func__) );
 	return true;
 }
@@ -1579,10 +1579,10 @@ str NetworkSystem::netPrintAddr ( NetAddr adr )
 	char buf[128];
 	str type;
 	switch ( adr.type ) {
-	case NET_ANY:			type = "any  ";	break;
-	case NET_BROADCAST:		type = "broad";	break;
-	case NET_SEARCH:		type = "srch";	break;
-	case NET_CONNECT:		type = "conn";	break;
+	case NTYPE_ANY:			type = "any  ";	break;
+	case NTYPE_BROADCAST:		type = "broad";	break;
+	case NTYPE_SEARCH:		type = "srch";	break;
+	case NTYPE_CONNECT:		type = "conn";	break;
 	};
 	sprintf ( buf, "%s,%s:%d", type.c_str(), getIPStr(adr.ipL).c_str(), adr.port );
 	TRACE_EXIT ( (__func__) );
@@ -1599,8 +1599,8 @@ void NetworkSystem::netPrint ( bool verbose )
 			side = ( m_socks[ n ].side == NET_CLI ) ? "cli" : "srv";
 			mode = ( m_socks[ n ].mode == NET_TCP ) ? "tcp" : "udp";
 			switch ( m_socks[ n ].state ) {
-				case NET_OFF:		stat = "off      ";	break;
-				case NET_ENABLE:	stat = "enable   "; break;
+				case STATE_NONE:		stat = "off      ";	break;
+				case STATE_START:	stat = "enable   "; break;
 				case STATE_CONNECTED:	stat = "connected"; break;
 				case STATE_TERMINATED: stat = "terminatd"; break;
 			};
@@ -1611,7 +1611,7 @@ void NetworkSystem::netPrint ( bool verbose )
 				msg = "<-- to Server";
 			if ( m_socks[ n ].side==NET_SRV && m_socks[ n ].state == STATE_CONNECTED )
 				msg = "<-- to Client";
-			if ( m_socks[ n ].side==NET_SRV && m_socks[ n ].state == NET_ENABLE && m_socks[ n ].src.ipL == 0 )
+			if ( m_socks[ n ].side==NET_SRV && m_socks[ n ].state == STATE_START && m_socks[ n ].src.ipL == 0 )
 				msg = "<-- Server Listening Port";
 
 			dbgprintf ( "%d: %s %s %s src[%s] dst[%s] %s\n", n, side.c_str(), mode.c_str(), stat.c_str(), src.c_str(), dst.c_str(), msg.c_str() );
@@ -1640,12 +1640,12 @@ void NetworkSystem::netSetHostname ()
 	TRACE_EXIT ( (__func__) );
 }
 
-bool NetworkSystem::netSendLiteral ( str str, int sock )
+bool NetworkSystem::netSendLiteral ( str str_lit, int sock )
 {
 	TRACE_ENTER ( (__func__) );
-	int len = str.length ( ), error, result;
-	char* buf = (char*) malloc ( str.length ( ) + 1 );
-	strcpy ( buf, str.c_str ( ) );	
+	int len = str_lit.length ( ), error, result;
+	char* buf = (char*) malloc ( str_lit.length ( ) + 1 );
+	strcpy ( buf, str_lit.c_str ( ) );	
 	
 	NetSock& s = m_socks [ sock ]; // Send over socket
 	if ( m_socks [ sock ].mode == NET_TCP ) {
@@ -1736,7 +1736,7 @@ int NetworkSystem::netSocketAdd ( int sock_i )
 {
 	TRACE_ENTER ( (__func__) );
 	NetSock& s = m_socks[ sock_i ];	    
-	if ( s.state == NET_OFF ) {
+	if ( s.state == STATE_NONE ) {
 		TRACE_EXIT ( (__func__) );
 		return 0;
 	}
@@ -1824,7 +1824,7 @@ int NetworkSystem::netSocketRecv ( int sock_i, char* buf, int buflen, int& recvl
 	socklen_t addr_size;
 	int result;
 	NetSock& s = m_socks [ sock_i ];
-	if ( s.src.type != NET_CONNECT ) {
+	if ( s.src.type != NTYPE_CONNECT ) {
 		TRACE_EXIT ( (__func__) );
 		return 0; // Only recv on connection sockets
 	}
@@ -1904,7 +1904,7 @@ int NetworkSystem::netSocketSelectRead ( fd_set* sockSet )
 	FD_ZERO ( sockSet );
 	for ( int n = 0; n < (int) m_socks.size ( ); n++ ) { // Get all sockets that are Enabled or Connected
 		NetSock& s = m_socks[ n ];
-		if ( s.state != NET_OFF && s.state != STATE_TERMINATED ) { // look for NET_ENABLE or NET_CONNECT
+		if ( s.state != STATE_NONE && s.state != STATE_TERMINATED ) { // look for STATE_START or NTYPE_CONNECT
 			if ( s.state < STATE_SSL_HANDSHAKE || s.security == NET_SECURITY_PLAIN_TCP ) { 
 				FD_SET ( s.socket, sockSet );
 				if ( (int) s.socket > maxfd ) maxfd = s.socket;

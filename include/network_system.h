@@ -133,7 +133,7 @@ public:
 	Event netMakeEvent ( eventStr_t name, eventStr_t sys );
 	bool netSend ( Event& e );
 	bool netSend ( Event& e, int mode, int sock );
-	bool netSendLiteral ( str str, int sock );
+	bool netSendLiteral ( str str_lit, int sock );
 	void netQueueEvent ( Event& e ); // Place incoming event on recv queue
 	int netEventCallback ( Event& e ); // Processes network events (dispatch)
 	void netSetUserCallback ( funcEventHandler userfunc )	{ m_userEventCallback = userfunc; }
@@ -161,9 +161,7 @@ public:
 private: // MP: Move this stuff
 	void netServerCompleteConnection ( int sock_i );	
 
-	TimeX m_refTime;
-
-	funcEventHandler			m_userEventCallback;	// User event handler
+	funcEventHandler m_userEventCallback; // User event handler
 
 private: // Functions
 
@@ -266,11 +264,12 @@ private: // State
 	
 	// Debug and trace related
 	int	m_check;
+	int m_indentCount;
 	bool m_printDebugNet;
 	bool m_printVerbose;
 	bool m_printHandshake;
 	FILE* m_trace;
-	int m_indentCount;
+	TimeX m_refTime;
 	
 	// Security related
 	int m_security;

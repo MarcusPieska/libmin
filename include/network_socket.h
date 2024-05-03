@@ -63,13 +63,13 @@
 	#define NET_SECURITY_OPENSSL		1
 	#define NET_SECURITY_DTLS			2
 	
-	#define NET_ANY						0 // types
-	#define NET_BROADCAST				1		
-	#define NET_SEARCH					2	
-	#define NET_CONNECT					3	
+	#define NTYPE_ANY					0 // types
+	#define NTYPE_BROADCAST				1		
+	#define NTYPE_SEARCH				2	
+	#define NTYPE_CONNECT				3	
 
-	#define NET_OFF						0 // stats
-	#define NET_ENABLE					1
+	#define STATE_NONE					0 // stats
+	#define STATE_START					1
 	#define STATE_SSL_HANDSHAKE			2
 	#define STATE_CONNECTED				3
 	#define STATE_FAILED				4
@@ -80,7 +80,7 @@
 	struct HELPAPI NetAddr {
 	public:
         NetAddr ( int t, std::string n, netIP i, int p ) { type = t; name = n; ipL = i; convertIP(i); port = p;}
-		NetAddr ()  { type = NET_OFF; name = ""; ipL = 0; convertIP(0); port = 0; }
+		NetAddr ()  { type = STATE_NONE; name = ""; ipL = 0; convertIP(0); port = 0; }
 
 		void convertIP ( netIP i ) {
 #ifdef _WIN32
