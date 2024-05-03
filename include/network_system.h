@@ -120,6 +120,7 @@ public:
 	void netServerStart ( netPort srv_port, int security = NET_SECURITY_UNDEF );
 	void netServerAcceptClient ( int sock_i );
 	void netServerProcessIO ( );
+	void netServerCompleteConnection ( int sock_i );
 
 	// Client API
 	void netClientStart ( netPort srv_port, str srv_addr="127.0.0.1" );
@@ -164,8 +165,6 @@ public:
 	netIP		getStrToIP ( str name );
 
 private: // MP: Move this stuff
-	void netServerCompleteConnection ( int sock_i );	
-
 	funcEventHandler m_userEventCallback; // User event handler
 
 private: // Functions
@@ -173,7 +172,7 @@ private: // Functions
 	// Handling non-blocking OpenSSL handshake
 	#ifdef BUILD_OPENSSL
 		void netFreeSSL ( int sock_i ); 
-		int netCheckOpensslError ( int sock_i, int ret ); 
+		int netCheckErrorSSL ( int sock_i, int ret ); 
 		void netServerSetupHandshakeSSL ( int sock_i ); 
 		void netServerAcceptSSL ( int sock_i );
 		void netClientSetupHandshakeSSL ( int sock_i ); 

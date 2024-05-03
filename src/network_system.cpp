@@ -593,7 +593,7 @@ void NetworkSystem::netServerAcceptSSL ( int sock_i )
 	NetSock& s = m_socks[ sock_i ];	   
 	int ret;
 	if ( ( ret = SSL_accept ( s.ssl ) ) < 0 ) {
-		if ( netCheckOpensslError ( sock_i, ret ) ) {
+		if ( netCheckErrorSSL ( sock_i, ret ) ) {
 			handshake_print ( "Non-blocking call to ssl accept returned" );
 			handshake_print ( "Ready for safe transfer: %d", SSL_is_init_finished ( s.ssl ) );
 		} else {	
@@ -842,7 +842,7 @@ void NetworkSystem::netClientConnectSSL ( int sock_i )
 	int ret = 0, exp;
 	NetSock& s = m_socks[ sock_i ];
 	if ( ( ret = SSL_connect ( s.ssl ) ) < 0 ) {
-		if ( netCheckOpensslError ( sock_i, ret ) ) {
+		if ( netCheckErrorSSL ( sock_i, ret ) ) {
 			handshake_print ( "Non-blocking call to ssl connect tentatively succeded" );
 			handshake_print ( "Ready for safe transfer: %d", SSL_is_init_finished ( s.ssl ) );
 		} else {
@@ -1082,7 +1082,7 @@ int NetworkSystem::netCloseConnection ( int sock_i )
 
 #ifdef BUILD_OPENSSL
 
-int NetworkSystem::netCheckOpensslError ( int sock, int ret ) 
+int NetworkSystem::netCheckErrorSSL ( int sock, int ret ) 
 {
 	TRACE_ENTER ( (__func__) );
 	NetSock& s = m_socks [ sock ];
