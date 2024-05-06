@@ -139,12 +139,12 @@ public:
 	Event netMakeEvent ( eventStr_t name, eventStr_t sys );
 	bool netSend ( Event& e );
 	bool netSend ( Event& e, int mode, int sock );
-	bool netSendLiteral ( str str_lit, int sock );
+	bool netSendLiteral ( str str_lit, int sock_i );
 	void netQueueEvent ( Event& e ); // Place incoming event on recv queue
 	int netEventCallback ( Event& e ); // Processes network events (dispatch)
 	void netSetUserCallback ( funcEventHandler userfunc )	{ m_userEventCallback = userfunc; }
 	bool netIsConnectComplete ( int sock_i );
-	bool netCheckError ( int result, int sock );
+	bool netCheckError ( int result, int sock_i );
 	int netPrintError ( str msg, int error_id = 0 );
 	
 	// Accessors
@@ -225,16 +225,16 @@ private: // Functions
 	void net_perf_pop ( );
 	
 	// Cross-platform socket interactions
-	void CX_SetHostname ( );
-	void CX_SocketApiInit ( );
-	void CX_SocketMakeBlock ( SOCKET sock_h, bool block = false );
-	unsigned long CX_SocketReadBytes ( SOCKET sock_h );
-	int CX_SocketIvalid ( SOCKET sock_h );
-	int CX_SocketError ( SOCKET sock_h );
-	str CX_GetErrorMsg ( int& error_id );
-	void CX_SocketUpdateAddr ( SOCKET sock_i, bool src = true );
-	void CX_SocketClose ( SOCKET sock_h );
-	str CX_GetIpStr ( netIP ip );
+	void CXSetHostname ( );
+	void CXSocketApiInit ( );
+	void CXSocketMakeBlock ( SOCKET sock_h, bool block = false );
+	unsigned long CXSocketReadBytes ( SOCKET sock_h );
+	int CXSocketIvalid ( SOCKET sock_h );
+	int CXSocketError ( SOCKET sock_h );
+	str CXGetErrorMsg ( int& error_id );
+	void CXSocketUpdateAddr ( SOCKET sock_i, bool src = true );
+	void CXSocketClose ( SOCKET sock_h );
+	str CXGetIpStr ( netIP ip );
 	
 private: // State
 	

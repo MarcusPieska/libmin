@@ -120,7 +120,7 @@ void NetworkSystem::net_perf_pop ( )
 // -> CROSS-COMPATIBILITY <-
 //----------------------------------------------------------------------------------------------------------------------
 
-inline void NetworkSystem::CX_SetHostname ( )
+inline void NetworkSystem::CXSetHostname ( )
 {
 	TRACE_ENTER ( (__func__) );
 	// NOTE: Host may have multiple interfaces, this is just to get one valid local IP address (-Marty)
@@ -167,7 +167,7 @@ inline void NetworkSystem::CX_SetHostname ( )
 	TRACE_EXIT ( (__func__) );
 }
 
-inline void NetworkSystem::CX_SocketApiInit ( )
+inline void NetworkSystem::CXSocketApiInit ( )
 {
 	TRACE_ENTER ( (__func__) );
 	#if defined(_MSC_VER) || defined(_WIN32) // Winsock startup
@@ -182,7 +182,7 @@ inline void NetworkSystem::CX_SocketApiInit ( )
 	TRACE_EXIT ( (__func__) );
 }
 
-inline void NetworkSystem::CX_SocketMakeBlock ( SOCKET sock_h, bool block )
+inline void NetworkSystem::CXSocketMakeBlock ( SOCKET sock_h, bool block )
 {
 	TRACE_ENTER ( (__func__) );
 	#ifdef _WIN32 // windows
@@ -213,12 +213,12 @@ inline void NetworkSystem::CX_SocketMakeBlock ( SOCKET sock_h, bool block )
 	TRACE_EXIT ( (__func__) );
 }
 
-unsigned long NetworkSystem::CX_SocketReadBytes ( SOCKET sock_h ) 
+unsigned long NetworkSystem::CXSocketReadBytes ( SOCKET sock_h ) 
 {   
 	TRACE_ENTER ( (__func__) );
 	unsigned long bytes_avail;
 	#ifdef _WIN32 // windows
-		if ( ioctlsocket ( sock_h, FIONREAD, &bytes_avail) == -1 ) {
+		if ( ioctlsocket ( sock_h, FIONREAD, &bytes_avail ) == -1 ) {
 			perror ( "ioctl FIONREAD" );
 			bytes_avail = -1;
 		} 
@@ -235,31 +235,31 @@ unsigned long NetworkSystem::CX_SocketReadBytes ( SOCKET sock_h )
 	return bytes_avail;
 }
 
-inline int NetworkSystem::CX_SocketIvalid ( int sock )
+inline int NetworkSystem::CXSocketIvalid ( SOCKET sock_h )
 {
 	TRACE_ENTER ( (__func__) );
 	#ifdef _WIN32
 		TRACE_EXIT ( (__func__) );
-		return sock == CX_SocketIvalidET;
+		return sock_h == INVALID_SOCKET;
 	#else
 		TRACE_EXIT ( (__func__) );
-		return sock < 0;
+		return sock_h < 0;
 	#endif
 }
 
-inline int NetworkSystem::CX_SocketError ( int sock )
+inline int NetworkSystem::CXSocketError ( SOCKET sock_h )
 {
 	TRACE_ENTER ( (__func__) );
 	#if defined(_MSC_VER) || defined(_WIN32)
 		TRACE_EXIT ( (__func__) );
-		return sock == SOCKET_ERROR;
+		return sock_h == SOCKET_ERROR;
 	#else
 		TRACE_EXIT ( (__func__) );
-		return sock < 0;
+		return sock_h < 0;
 	#endif
 }
 
-str NetworkSystem::CX_GetErrorMsg ( int& error_id )
+str NetworkSystem::CXGetErrorMsg ( int& error_id )
 {
 	TRACE_ENTER ( (__func__) );
 	#ifdef _WIN32 // get error on windows
@@ -284,7 +284,7 @@ str NetworkSystem::CX_GetErrorMsg ( int& error_id )
 	return error_str;
 }
 
-inline void NetworkSystem::CX_SocketUpdateAddr ( int sock_i, bool src )
+inline void NetworkSystem::CXSocketUpdateAddr ( int sock_i, bool src )
 {
 	TRACE_ENTER ( (__func__) );
 	NetSock& s = m_socks [ sock_i ];	   
@@ -293,7 +293,7 @@ inline void NetworkSystem::CX_SocketUpdateAddr ( int sock_i, bool src )
 	#ifdef _WIN32 // Windows
 		int case_key = ( src ) ? s.src.type : s.dest.type;
 		switch ( case_key ) {
-			case NTYPE_BROADCAST:		s.src.ip.S_un.S_addr = htonl( INADDR_BROADCAST ); 	optval = 1;	break;
+			case NTYPE_BROADCAST:	s.src.ip.S_un.S_addr = htonl( INADDR_BROADCAST ); 	optval = 1;	break;
 			case NTYPE_ANY:			s.src.ip.S_un.S_addr = htonl( INADDR_ANY ); 		optval = 0;	break;
 			case NTYPE_CONNECT:		s.src.ip.S_un.S_addr = s.src.ipL; 					optval = 0; break;
 		};
@@ -332,7 +332,7 @@ inline void NetworkSystem::CX_SocketUpdateAddr ( int sock_i, bool src )
 	TRACE_EXIT ( (__func__) );
 }
 
-inline void NetworkSystem::CX_SocketClose ( SOCKET sock_h )
+inline void NetworkSystem::CXSocketClose ( SOCKET sock_h )
 {
 	TRACE_ENTER ( (__func__) );
 	#ifdef _WIN32
@@ -353,7 +353,7 @@ inline void NetworkSystem::CX_SocketClose ( SOCKET sock_h )
 	TRACE_EXIT ( (__func__) );
 }
 
-inline str NetworkSystem::CX_GetIpStr ( netIP ip )
+inline str NetworkSystem::CXGetIpStr ( netIP ip )
 {
 	TRACE_ENTER ( (__func__) );
 	char ipname [ 1024 ];
@@ -446,7 +446,7 @@ void NetworkSystem::sleep_ms ( int time_ms )
 unsigned long NetworkSystem::get_read_ready_bytes ( SOCKET sock_h ) 
 {   
 	TRACE_ENTER ( (__func__) ); 
-	unsigned long bytes_avail = CX_SocketReadBytes ( sock_h );
+	unsigned long bytes_avail = CXSocketReadBytes ( sock_h );
 	TRACE_EXIT ( (__func__) );
 	return bytes_avail;
 }
@@ -467,14 +467,14 @@ void NetworkSystem::make_sock_no_delay ( SOCKET sock_h )
 void NetworkSystem::make_sock_block ( SOCKET sock_h )
 {
 	TRACE_ENTER ( (__func__) );
-	CX_SocketMakeBlock ( sock_h, true );
+	CXSocketMakeBlock ( sock_h, true );
 	TRACE_EXIT ( (__func__) );
 }
 
 void NetworkSystem::make_sock_non_block ( SOCKET sock_h )
 {
 	TRACE_ENTER ( (__func__) );
-	CX_SocketMakeBlock ( sock_h, false );
+	CXSocketMakeBlock ( sock_h, false );
 	TRACE_EXIT ( (__func__) );
 }
 
@@ -1232,7 +1232,7 @@ int NetworkSystem::netManageFatalError ( int sock_i, int force )
 			netFreeSSL ( sock_i ); 
 			handshake_print ( "Call to free old context made (1)" );
 		}
-		CX_SocketClose ( s.socket );
+		CXSocketClose ( s.socket );
 		s.socket = 0;
 		netSocketAdd ( sock_i );
 	} else {
@@ -1260,7 +1260,7 @@ int NetworkSystem::netDeleteSocket ( int sock_i, int force )
 		 TRACE_EXIT ( (__func__) );
 		 return 0;
 	}
-	CX_SocketClose ( s.socket );
+	CXSocketClose ( s.socket );
 	s.state = STATE_TERMINATED;
 	
 	// remove sockets at end of list
@@ -1635,27 +1635,27 @@ void NetworkSystem::netPrint ( bool verbose )
 void NetworkSystem::netStartSocketAPI ( )
 {
 	TRACE_ENTER ( (__func__) );
-	CX_SocketApiInit ( );
+	CXSocketApiInit ( );
 	TRACE_EXIT ( (__func__) );
 }
 
 void NetworkSystem::netSetHostname ()
 {
 	TRACE_ENTER ( (__func__) );
-	CX_SetHostname ( );
+	CXSetHostname ( );
 	verbose_print ( "  Local Host: %s, %s", m_hostName.c_str ( ), getIPStr ( m_hostIp ).c_str ( ) );
 	TRACE_EXIT ( (__func__) );
 }
 
-bool NetworkSystem::netSendLiteral ( str str_lit, int sock )
+bool NetworkSystem::netSendLiteral ( str str_lit, int sock_i )
 {
 	TRACE_ENTER ( (__func__) );
 	int len = str_lit.length ( ), error, result;
 	char* buf = (char*) malloc ( str_lit.length ( ) + 1 );
 	strcpy ( buf, str_lit.c_str ( ) );	
 	
-	NetSock& s = m_socks [ sock ]; // Send over socket
-	if ( m_socks [ sock ].mode == NET_TCP ) {
+	NetSock& s = m_socks[ sock_i ]; // Send over socket
+	if ( s.mode == NET_TCP ) {
 		if ( s.state < STATE_SSL_HANDSHAKE || s.security == NET_SECURITY_PLAIN_TCP ) {
 			result = send ( s.socket, buf, len, 0 ); // TCP/IP
 		} else {
@@ -1672,19 +1672,19 @@ bool NetworkSystem::netSendLiteral ( str str_lit, int sock )
 		} 
 	}
 	else {
-		int addr_size = sizeof ( m_socks[ sock ].dest.addr );
+		int addr_size = sizeof ( s.dest.addr );
 		result = sendto ( s.socket, buf, len, 0, (sockaddr*)&s.dest.addr, addr_size ); // UDP
 	}
 	free( buf );
 	TRACE_EXIT ( (__func__) );
-	return netCheckError ( result, sock );		
+	return netCheckError ( result, sock_i );		
 }
 
-bool NetworkSystem::netCheckError ( int result, int sock )
+bool NetworkSystem::netCheckError ( int result, int sock_i )
 {
 	TRACE_ENTER ( (__func__) );
-	if ( CX_SocketError ( result ) ) {
-		netManageFatalError ( sock ); // peer has shutdown (unexpected shutdown)
+	if ( CXSocketError ( result ) ) {
+		netManageFatalError ( m_socks[ sock_i ].socket ); // peer has shutdown (unexpected shutdown)
 		netPrintError ( "Unexpected shutdown." );
 		TRACE_EXIT ( (__func__) );
 		return false;
@@ -1754,8 +1754,8 @@ int NetworkSystem::netSocketAdd ( int sock_i )
 			s.socket = socket ( AF_INET, SOCK_DGRAM, IPPROTO_UDP ); 
 		}
 	}
-	CX_SocketUpdateAddr ( sock_i, true );
-	CX_SocketUpdateAddr ( sock_i, false );
+	CXSocketUpdateAddr ( sock_i, true );
+	CXSocketUpdateAddr ( sock_i, false );
 	TRACE_EXIT ( (__func__) );
 	return 1;
 }
@@ -1798,7 +1798,7 @@ int NetworkSystem::netSocketListen ( int sock_i )
 	NetSock& s = m_socks [ sock_i ];
 	verbose_print ( "Listen: port %i", s.src.port );
 	int result = listen ( s.socket, SOMAXCONN );
-	if ( CX_SocketError ( result ) ) {
+	if ( CXSocketError ( result ) ) {
 		netPrintError ( "TCP Listen error\n" );
 	}
 	TRACE_EXIT ( (__func__) );
@@ -1813,7 +1813,7 @@ int NetworkSystem::netSocketAccept ( int sock_i, SOCKET& tcp_sock, netIP& cli_ip
 	int addr_size = sizeof ( sin );
 	tcp_sock = accept ( s.socket, (sockaddr*) &sin, (socklen_t *) (&addr_size) );
 
-	if ( CX_SocketIvalid ( tcp_sock ) ) {
+	if ( CXSocketIvalid ( tcp_sock ) ) {
 		netPrintError ( "TCP Accept error" );
 		TRACE_EXIT ( (__func__) );
 		return -1;
@@ -1944,7 +1944,7 @@ int NetworkSystem::netSocketSelectRead ( fd_set* sockSet )
 int NetworkSystem::netPrintError ( str msg, int error_id )
 {
 	TRACE_ENTER ( (__func__) );
-	str error_str = CX_GetErrorMsg ( error_id );
+	str error_str = CXGetErrorMsg ( error_id );
 	verbose_print ( "  netSys ERROR: %s\n  %s (%d)\n", msg.c_str ( ), error_str.c_str ( ), error_id );
 	TRACE_EXIT ( (__func__) );
 	return error_id;
@@ -1953,7 +1953,7 @@ int NetworkSystem::netPrintError ( str msg, int error_id )
 bool NetworkSystem::netIsError ( int result )
 {
 	TRACE_ENTER ( (__func__) );
-	if ( CX_SocketError ( result ) ) { 
+	if ( CXSocketError ( result ) ) { 
 		TRACE_EXIT ( (__func__) );
 		return true; 
 	}
@@ -1964,7 +1964,7 @@ bool NetworkSystem::netIsError ( int result )
 str NetworkSystem::getIPStr ( netIP ip )
 {
 	TRACE_ENTER ( (__func__) );
-	str ipstr = CX_GetIpStr ( ip );
+	str ipstr = CXGetIpStr ( ip );
 	TRACE_EXIT ( (__func__) );
 	return ipstr;
 }
