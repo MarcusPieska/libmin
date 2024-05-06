@@ -6,7 +6,6 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #include <assert.h>
-#include <filesystem>
 #include "network_system.h"
 
 #ifdef __linux__
@@ -103,11 +102,11 @@ void NetworkSystem::net_perf_pop ( )
 #define TRACE_FUNCTION_CALLS
 
 #ifdef TRACE_FUNCTION_CALLS
-	#define TRACE_SETUP(msg) trace_setup(msg)
-	#define TRACE_ENTER(msg) trace_enter(msg)
-	#define TRACE_EXIT(msg) trace_exit(msg)
-	#define NET_PERF_PUSH(msg) net_perf_push(msg)
-	#define NET_PERF_POP(msg) net_perf_pop()
+	#define TRACE_SETUP(msg) this->trace_setup(msg)
+	#define TRACE_ENTER(msg) this->trace_enter(msg)
+	#define TRACE_EXIT(msg) this->trace_exit(msg)
+	#define NET_PERF_PUSH(msg) this->net_perf_push(msg)
+	#define NET_PERF_POP(msg) this->net_perf_pop()
 #else 
 	#define TRACE_SETUP(msg) (void)0
 	#define TRACE_ENTER(msg) (void)0
@@ -1153,11 +1152,11 @@ void NetworkSystem::netProcessEvents ( Event& e )
 			break;
 		} 
 		case 'sExT': { // Server recv, exit TCP from client. sEnT
-			int local_sock = e.getUInt ( ); // Socket to close
+			int local_sock_i = e.getUInt ( ); // Socket to close
 			int remote_sock = e.getUInt ( ); // Remote socket
-			netIP cli_ip = m_socks[ local_sock ].dest.ipL;
+			netIP cli_ip = m_socks[ local_sock_i ].dest.ipL;
 			verbose_print ( "  Server: Client closed ok. %s", getIPStr ( cli_ip ).c_str ( ) );
-			netManageFatalError ( local_sock );
+			netManageFatalError ( local_sock_i );
 			netPrint ( );
 			break;
 		}
@@ -1683,8 +1682,8 @@ bool NetworkSystem::netSendLiteral ( str str_lit, int sock_i )
 bool NetworkSystem::netCheckError ( int result, int sock_i )
 {
 	TRACE_ENTER ( (__func__) );
-	if ( CXSocketError ( result ) ) {
-		netManageFatalError ( m_socks[ sock_i ].socket ); // peer has shutdown (unexpected shutdown)
+	if ( CXSocketError ( m_socks[ sock_i ].socket ) ) {
+		netManageFatalError ( sock_i ); // peer has shutdown (unexpected shutdown)
 		netPrintError ( "Unexpected shutdown." );
 		TRACE_EXIT ( (__func__) );
 		return false;
@@ -1877,10 +1876,10 @@ bool NetworkSystem::netSocketIsConnected ( int sock_i )
     FD_SET ( s.socket, &sockSet );
     struct timeval tv = { 0, 0 };
     int so_error = -1;
-    if ( select ( s.socket + 1, NULL, &sockSet, NULL, &tv ) > 0 ) { 
+    /* if ( select ( s.socket + 1, NULL, &sockSet, NULL, &tv ) > 0 ) { 
         socklen_t len = sizeof ( so_error );
         getsockopt ( s.socket, SOL_SOCKET, SO_ERROR, &so_error, &len );
-    } 
+    } */
     TRACE_EXIT ( (__func__) );
     return so_error == 0; // Use select and result from getsockopt to check if connection is done
 }
@@ -2109,40 +2108,24 @@ bool NetworkSystem::netAllowFallbackToPlainTCP ( bool allow, int sock_i )
 
 bool NetworkSystem::netSetPathToPublicKey ( str path )
 {
-	if ( ! std::filesystem::is_regular_file ( path ) ) {
-		debug_print ( "File path to public key is invalid: %s", path );
-		return false;
-	}
 	m_pathPublicKey = path;
 	return true;
 }
 
 bool NetworkSystem::netSetPathToPrivateKey ( str path )
 {
-	if ( ! std::filesystem::is_regular_file ( path ) ) {
-		debug_print ( "File path to private key is invalid: %s", path );
-		return false;
-	}
 	m_pathPrivateKey = path;
 	return true;
 }
 
 bool NetworkSystem::netSetPathToCertDir ( str path )
 {
-	if ( ! std::filesystem::is_directory ( path ) ) {
-		debug_print ( "Path to certificate folder is invalid: %s", path );
-		return false;
-	}
 	m_pathCertDir = path;
 	return true;
 }
 
 bool NetworkSystem::netSetPathToCertFile ( str path )
 {
-	if ( ! std::filesystem::is_regular_file ( path ) ) {
-		debug_print ( "File path to certificate is invalid: %s", path );
-		return false;
-	}
 	m_pathCertFile = path;
 	return true;
 }

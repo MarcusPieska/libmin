@@ -232,7 +232,7 @@ private: // Functions
 	int CXSocketIvalid ( SOCKET sock_h );
 	int CXSocketError ( SOCKET sock_h );
 	str CXGetErrorMsg ( int& error_id );
-	void CXSocketUpdateAddr ( SOCKET sock_i, bool src = true );
+	void CXSocketUpdateAddr ( int sock_i, bool src = true );
 	void CXSocketClose ( SOCKET sock_h );
 	str CXGetIpStr ( netIP ip );
 	
