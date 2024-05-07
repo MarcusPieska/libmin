@@ -906,75 +906,66 @@ void NetworkSystem::netClientStart ( netPort cli_port, str srv_addr )
 	TRACE_EXIT ( (__func__) );
 }
 
-int NetworkSystem::netClientConnectToServer ( str srv_name, netPort srv_port, bool block, int sock_i )
+int NetworkSystem::netClientConnectToServer ( str srv_name, netPort srv_port, bool block, int cli_sock_i )
 {
 	TRACE_ENTER ( (__func__) );
 	str cli_name;
 	netIP cli_ip, srv_ip;
-	int cli_port, cli_sock_svc, cli_sock_i, cli_sock, adjusted_security, connect_result;
-	if ( VALID_INDEX ( sock_i ) ) {
-		adjusted_security = m_socks[ sock_i ].security;
-	} 
-
-	int dots = 0; // Check server name for dots
-	for ( int n = 0; n < srv_name.length ( ); n++ ) {
-		if ( srv_name.at ( n ) == '.' ) dots++;
-	}
-	if ( srv_name.compare ( "localhost" ) == 0 ) { // Derver is localhost
-		srv_ip = m_hostIp;
-	} else if ( dots == 3 ) { // Three dots, translate srv_name to literal IP		
-		srv_ip = getStrToIP ( srv_name );
-	} else { // Fewer dots, lookup host name resolve the server address and port
-		addrinfo* pAddrInfo;
-		char portname[ 64 ];
-		sprintf ( portname, "%d", srv_port );
-		int result = getaddrinfo ( srv_name.c_str ( ), portname, 0, &pAddrInfo );
-		if ( result != 0 ) {
-			TRACE_EXIT ( (__func__) );
-			return netPrintError ( "Unable to resolve server name: " + srv_name, result );
-		}	
-		
-		char ipstr[ INET_ADDRSTRLEN ];
-		for ( addrinfo* p = pAddrInfo; p != NULL; p = p->ai_next ) { // Translate addrinfo to IP string
-			struct in_addr* addr;
-			if ( p->ai_family == AF_INET ) {
-				struct sockaddr_in* ipv = (struct sockaddr_in*)p->ai_addr;
-				addr = &(ipv->sin_addr);
-			}
-			else {
-				struct sockaddr_in6* ipv6 = (struct sockaddr_in6*)p->ai_addr;
-				addr = (struct in_addr*) & (ipv6->sin6_addr);
-			}
-			inet_ntop ( p->ai_family, addr, ipstr, sizeof ipstr );
-		}		
-		srv_ip = getStrToIP ( ipstr );
-	}
-
-	cli_sock_svc = netFindSocket ( NET_CLI, NET_TCP, NTYPE_ANY ); // Find a local TCP socket service
-	cli_name = m_socks[ cli_sock_svc ].src.name;
-	cli_port = m_socks[ cli_sock_svc ].src.port;
-	cli_ip = m_hostIp;
-
-	NetAddr srv_addr = NetAddr ( NTYPE_CONNECT, srv_name, srv_ip, srv_port ); // Find or create socket
-	cli_sock_i = netFindSocket ( NET_CLI, NET_TCP, srv_addr );
-	if ( cli_sock_i == NET_ERR ) { 
-		NetAddr cli_addr = NetAddr ( NTYPE_CONNECT, cli_name, cli_ip, cli_port );
-		cli_sock_i = netAddSocket ( NET_CLI, NET_TCP, STATE_START, block, cli_addr, srv_addr );
-		if ( cli_sock_i == NET_ERR ) {	
-			TRACE_EXIT ( (__func__) );		
-			return netPrintError ( "Unable to add socket." );
+	int cli_port, connect_result;
+	if ( ! VALID_INDEX ( cli_sock_i ) ) { // If a socket index is not given, find a socket index
+		int dots = 0; // Check server name for dots
+		for ( int n = 0; n < srv_name.length ( ); n++ ) {
+			if ( srv_name.at ( n ) == '.' ) dots++;
 		}
-	}
+		if ( srv_name.compare ( "localhost" ) == 0 ) { // Derver is localhost
+			srv_ip = m_hostIp;
+		} else if ( dots == 3 ) { // Three dots, translate srv_name to literal IP		
+			srv_ip = getStrToIP ( srv_name );
+		} else { // Fewer dots, lookup host name resolve the server address and port
+			addrinfo* pAddrInfo;
+			char portname[ 64 ];
+			sprintf ( portname, "%d", srv_port );
+			int result = getaddrinfo ( srv_name.c_str ( ), portname, 0, &pAddrInfo );
+			if ( result != 0 ) {
+				TRACE_EXIT ( (__func__) );
+				return netPrintError ( "Unable to resolve server name: " + srv_name, result );
+			}	
+			char ipstr[ INET_ADDRSTRLEN ];
+			for ( addrinfo* p = pAddrInfo; p != NULL; p = p->ai_next ) { // Translate addrinfo to IP string
+				struct in_addr* addr;
+				if ( p->ai_family == AF_INET ) {
+					struct sockaddr_in* ipv = (struct sockaddr_in*)p->ai_addr;
+					addr = &(ipv->sin_addr);
+				}
+				else {
+					struct sockaddr_in6* ipv6 = (struct sockaddr_in6*)p->ai_addr;
+					addr = (struct in_addr*) & (ipv6->sin6_addr);
+				}
+				inet_ntop ( p->ai_family, addr, ipstr, sizeof ipstr );
+			}		
+			srv_ip = getStrToIP ( ipstr );
+		}
+		
+		int cli_sock_svc_i = netFindSocket ( NET_CLI, NET_TCP, NTYPE_ANY ); // Find a local TCP socket service
+		cli_name = m_socks[ cli_sock_svc_i ].src.name;
+		cli_port = m_socks[ cli_sock_svc_i ].src.port;
+		cli_ip = m_hostIp;
+		NetAddr srv_addr = NetAddr ( NTYPE_CONNECT, srv_name, srv_ip, srv_port ); // Find or create socket
+		cli_sock_i = netFindSocket ( NET_CLI, NET_TCP, srv_addr );
+		if ( cli_sock_i == NET_ERR ) { 
+			NetAddr cli_addr = NetAddr ( NTYPE_CONNECT, cli_name, cli_ip, cli_port );
+			cli_sock_i = netAddSocket ( NET_CLI, NET_TCP, STATE_START, block, cli_addr, srv_addr );
+			if ( cli_sock_i == NET_ERR ) {	
+				TRACE_EXIT ( (__func__) );		
+				return netPrintError ( "Unable to add socket." );
+			}
+		}
+	} 
 
 	const char reuse = 1;
 	NetSock& s = m_socks[ cli_sock_i ];
 	s.srvAddr = srv_name;
-	s.srvPort = srv_port;
-	if ( VALID_INDEX ( sock_i ) ) {
-		m_socks[ cli_sock_i ].security = adjusted_security;
-		m_socks[ cli_sock_i ].srvPort = srv_port;
-	} 
-	
+	s.srvPort = srv_port; 
 	if ( setsockopt ( s.socket, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof ( int ) ) < 0 ) {
 		verbose_print ( "netSys: Setting server socket as SO_REUSEADDR." );
 	}
@@ -1230,6 +1221,17 @@ int NetworkSystem::netManageHandshakeError ( int sock_i )
 	if ( s.tcpFallback ) {
 		s.security = NET_SECURITY_PLAIN_TCP;
 		s.srvPort += 1;
+		s.dest.port += 1;
+		s.state = STATE_START;
+		if ( s.ctx != 0 ) {
+			netFreeSSL ( sock_i ); 
+			handshake_print ( "Call to free old context made (1)" );
+		}
+		CXSocketClose ( s.socket );
+		s.socket = 0;
+		netSocketAdd ( sock_i );
+		netClientConnectToServer ( s.srvAddr, s.srvPort, false, sock_i );
+		
 	} else {
 		outcome = netDeleteSocket ( sock_i, 1 );
 	}

@@ -117,7 +117,6 @@ int NDClient::Process ( Event& e )
 		// Connection complete. server accepted OK.
 		int srv_sock = e.getInt();		// server sock
 		int cli_sock = e.getInt();		// local socket
-		mSock = cli_sock; 
 		dbgprintf( "  Connected to server: %s, %d\n", getSock( cli_sock )->dest.name.c_str ( ), srv_sock );
 
 		return 1;
