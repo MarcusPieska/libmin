@@ -1678,10 +1678,11 @@ bool NetworkSystem::netCheckError ( int result, int sock_i )
 	return true;
 }
 
+
 bool NetworkSystem::netSend ( Event& e, int sock_i )
 {
 	TRACE_ENTER ( (__func__) );
-	if ( sock_i == 0 ) { // Caller wishes to send on any outgoing socket
+	if ( sock_i == -1 ) { // Caller wishes to send on any outgoing socket
 		sock_i = netFindOutgoingSocket ( true );
 		if ( sock_i == -1 ) { 
 			TRACE_EXIT ( (__func__) );
