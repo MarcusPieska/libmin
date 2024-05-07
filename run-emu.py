@@ -19,7 +19,9 @@ do_server_timeout = False
 if len(sys.argv) >= 2:
   do_server_timeout = True
 
-paths = ["../build/ndserver/nd_server", "../build/ndclient/nd_client"]
+app = "net_call_response"
+
+paths = ["../build/%s/ndserver/nd_server" %(app), "../build/%s/ndclient/nd_client" %(app)]
 addr = ["10.0.10.1", "10.0.20.2"]
 intfs = ["h2-dev-r1", "h1-dev-r1"]
 contexts = ["ip netns exec emu-h2", "ip netns exec emu-h1"]
