@@ -432,6 +432,9 @@ NetworkSystem::NetworkSystem ( )
 	m_printDebugNet = true;
 	m_printHandshake = true;
 	m_trace = 0;
+	m_check = 0;
+	m_indentCount = 0;
+
 }
 
 void NetworkSystem::sleep_ms ( int time_ms ) 
@@ -711,10 +714,10 @@ void NetworkSystem::netServerCompleteConnection ( int sock_i )
 	e = netMakeEvent ( 'sOkT', 0 );
 	e.attachInt64 ( s.dest.ipL ); // Client IP
 	e.attachInt64 ( s.dest.port ); // Client port assigned by server!
-	e.attachInt64 ( m_hostIp ); // Server IP
-	e.attachInt64 ( srv_port ); // Server port
-	e.attachInt ( sock_i ); // Connection ID (goes back to the client)
-	netSend ( e, NTYPE_CONNECT, sock_i ); // Send TCP connected event to client
+	e.attachInt64 ( m_hostIp );		// Server IP
+	e.attachInt64 ( srv_port );		// Server port
+	e.attachInt ( sock_i );				// Connection ID (goes back to the client)
+	netSend ( e, sock_i );				// Send TCP connected event to client
 
 	Event ue = new_event ( 120, 'app ', 'sOkT', 0, m_eventPool ); // Inform the user-app (server) of the event	
 	ue.attachInt ( sock_i );
@@ -1509,23 +1512,6 @@ void NetworkSystem::netQueueEvent ( Event& e )
 	TRACE_EXIT ( (__func__) );
 }
 
-bool NetworkSystem::netSend ( Event& e )
-{
-	TRACE_ENTER ( (__func__) );
-	int sock = netFindOutgoingSocket ( true ); // Find a fully-connected socket
-	if ( sock == -1 ) { 
-		verbose_print ( "Unable to find outgoing socket." );
-		netReportError ( 111 ); // Return disconnection error
-		TRACE_EXIT ( (__func__) );
-		return false; 
-	}
-
-	//dbgprintf ( "%s send: name %s, len %d (%d data)\n", nameToStr(m_hostType).c_str(), nameToStr(e->getName()).c_str(), e->getEventLength(), e->getDataLength() );
-	int result = netSend ( e, NTYPE_CONNECT, sock );
-	TRACE_EXIT ( (__func__) );
-	return true;
-}
-
 Event NetworkSystem::netMakeEvent ( eventStr_t name, eventStr_t sys )
 {
 	TRACE_ENTER ( (__func__) );
@@ -1692,7 +1678,7 @@ bool NetworkSystem::netCheckError ( int result, int sock_i )
 	return true;
 }
 
-bool NetworkSystem::netSend ( Event& e, int mode, int sock_i )
+bool NetworkSystem::netSend ( Event& e, int sock_i )
 {
 	TRACE_ENTER ( (__func__) );
 	if ( sock_i == 0 ) { // Caller wishes to send on any outgoing socket
@@ -1986,7 +1972,7 @@ netIP NetworkSystem::getStrToIP ( str name )
 // -> MISCELLANEOUS CONFIG API <-
 //----------------------------------------------------------------------------------------------------------------------
 
-bool NetworkSystem::netSetSelectInterval ( int time_ms ) 
+void NetworkSystem::netSetSelectInterval ( int time_ms ) 
 {
 	m_rcvSelectTimout.tv_sec = time_ms / 1000;
 	m_rcvSelectTimout.tv_usec = ( time_ms % 1000 ) * 1000; 

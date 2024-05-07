@@ -97,7 +97,7 @@ public:
 	str netPrintAddr ( NetAddr adr );
 	
 	// Miscellaneous config API
-	bool netSetSelectInterval ( int time_ms ); 
+	void netSetSelectInterval ( int time_ms ); 
 	
 	// Security config API
 	bool netSetReconnectInterval ( int time_ms ); 
@@ -136,9 +136,8 @@ public:
 	void netProcessEvents ( Event& e );
 	int netProcessQueue ( void );
 	int netRecieveData ( int sock_i );
-	Event netMakeEvent ( eventStr_t name, eventStr_t sys );
-	bool netSend ( Event& e );
-	bool netSend ( Event& e, int mode, int sock );
+	Event netMakeEvent ( eventStr_t name, eventStr_t sys );	
+	bool netSend ( Event& e, int sock=-1 );
 	bool netSendLiteral ( str str_lit, int sock_i );
 	void netQueueEvent ( Event& e ); // Place incoming event on recv queue
 	int netEventCallback ( Event& e ); // Processes network events (dispatch)
@@ -148,14 +147,14 @@ public:
 	int netPrintError ( str msg, int error_id = 0 );
 	
 	// Accessors
-	TimeX		getSysTime ( )		{ return TimeX::GetSystemNSec ( ); }
-	str			getHostName ( )		{ return m_hostName; }
-	bool		isServer ( )		{ return m_hostType == 's'; }
-	bool		isClient ( )		{ return m_hostType == 'c'; }
-	bool 		netIsQueueEmpty ( )	{ return m_eventQueue.size ( ) == 0; }
-	netIP		getHostIP ( )		{ return m_hostIp; }
-	int			getMaxPacketLen ( )	{ return m_maxPacketLen; }
-	EventPool*  getPool ( )			{ return m_eventPool; }
+	TimeX		getSysTime ( )				{ return TimeX::GetSystemNSec ( ); }
+	str			getHostName ( )				{ return m_hostName; }
+	bool		isServer ( )					{ return m_hostType == 's'; }
+	bool		isClient ( )					{ return m_hostType == 'c'; }
+	bool 		netIsQueueEmpty ( )		{ return m_eventQueue.size ( ) == 0; }
+	netIP		getHostIP ( )					{ return m_hostIp; }
+	int			getMaxPacketLen ( )		{	return m_maxPacketLen; }
+	EventPool*  getNetPool ( )		{ return m_eventPool; }
 	
 	NetSock*	getSock ( int sock_i )			{ return VALID_INDEX(sock_i) ? &m_socks[ sock_i ] : 0; }
 	str			getSockIP ( int sock_i )		{ return VALID_INDEX(sock_i) ? getIPStr ( m_socks[ sock_i ].dest.ipL ) : ""; }
@@ -248,8 +247,8 @@ private: // State
 	std::vector< NetSock > m_socks;
 	
 	// Event related
-	EventPool* m_eventPool; 
-	EventQueue m_eventQueue;
+	EventPool*	m_eventPool; 
+	EventQueue	m_eventQueue;
 
 	// Incoming event data
 	int	m_dataLen;
