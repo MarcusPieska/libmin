@@ -40,10 +40,10 @@ void NDServer::Start ()
 	std::cout << netSetSecurityLevel ( 1 ) << std::endl;
 	std::cout << netAllowFallbackToPlainTCP ( false ) << std::endl;
 	std::cout << netSetReconnectLimit ( 10 ) << std::endl;
-	std::cout << netSetPathToPublicKey ( "/home/w/Downloads/libmin/src/assets/server-server.pem" ) << std::endl;
-	std::cout << netSetPathToPrivateKey ( "/home/w/Downloads/libmin/src/assets/server.key" ) << std::endl;
-	std::cout << netSetPathToCertDir ( "/etc/ssl/certs" ) << std::endl;
-	std::cout << netSetPathToCertFile ( "/etc/ssl/certs/ca-certificates.crt" ) << std::endl;
+	std::cout << netSetPathToPublicKey ( "server_pubkey.pem" ) << std::endl;
+	std::cout << netSetPathToPrivateKey ( "server_private.pem" ) << std::endl;
+	//std::cout << netSetPathToCertDir ( "/etc/ssl/certs" ) << std::endl;
+	//std::cout << netSetPathToCertFile ( "/etc/ssl/certs/ca-certificates.crt" ) << std::endl;
 
 	// start networking
 	netInitialize();
@@ -185,6 +185,8 @@ int NDServer::Process ( Event& e )
 
 int main (int argc, char* argv[])
 {
+	addSearchPath ( ASSET_PATH );
+
 	NDServer srv;
 
 	srv.Start ();

@@ -457,7 +457,7 @@ void NetworkSystem::make_sock_no_delay ( SOCKET sock_h )
 {
 	TRACE_ENTER ( (__func__) );
 	int no_delay = 1;
-	if ( setsockopt ( sock_h, IPPROTO_TCP, TCP_NODELAY, (char *)&no_delay, sizeof ( no_delay ) ) < 0) {
+	if ( setsockopt ( sock_h, IPPROTO_TCP, TCP_NODELAY, (char *) &no_delay, sizeof ( no_delay ) ) < 0) {
 		perror( "Call to no delay FAILED" );
 	}  
 	else {
@@ -550,6 +550,9 @@ void NetworkSystem::netServerSetupHandshakeSSL ( int sock_i )
 	} else {
 		handshake_print ( "Call to default verify paths succeded" );
 	}
+	sprintf ( msg, "Trusted cert paths. CAfile=%s, CAdir=%s\n", m_pathCertFile.c_str(), m_pathCertDir.c_str() );
+	handshake_print ( msg );
+
 	if ( !m_pathCertFile.empty() || !m_pathCertDir.empty() ) {
 		if ( ( ret = SSL_CTX_load_verify_locations ( s.ctx, m_pathCertFile.c_str ( ) , m_pathCertDir.c_str ( ) ) ) <= 0) {
 			sprintf ( msg, "Load verify locations failed on cert file: %s\n", m_pathCertFile.c_str() );
@@ -558,6 +561,7 @@ void NetworkSystem::netServerSetupHandshakeSSL ( int sock_i )
 			handshake_print ( "Call to load verify locations succeded" );
 		}
 	}
+
 
 	SSL_CTX_set_verify ( s.ctx, SSL_VERIFY_PEER, NULL );
 
@@ -769,6 +773,8 @@ void NetworkSystem::netServerProcessIO ( )
 	
 void NetworkSystem::netClientSetupHandshakeSSL ( int sock_i ) 
 { 
+	char msg[2048];
+
 	TRACE_ENTER ( (__func__) );
 	NetSock& s = m_socks[ sock_i ];
 	if ( s.ctx != 0 ) {
@@ -810,7 +816,8 @@ void NetworkSystem::netClientSetupHandshakeSSL ( int sock_i )
 	SSL_CTX_set_verify ( s.ctx, SSL_VERIFY_PEER, NULL );
 
 	if ( !SSL_CTX_load_verify_locations( s.ctx, m_pathPublicKey.c_str ( ), NULL ) ) {
-		perror ( "load verify locations failed" );
+		sprintf ( msg, "Load verify failed on public key: %s\n", m_pathPublicKey.c_str() );
+		perror ( msg );
 		ERR_print_errors_fp ( stderr );
 		netFreeSSL ( sock_i );
 		TRACE_EXIT ( (__func__) );

@@ -41,6 +41,7 @@ int NDClient::NetEventCallback (Event& e, void* this_pointer) {
     return self->Process ( e );
 }
 
+
 void NDClient::Start (std::string srv_addr)
 {
 	mSrvAddr = srv_addr;
@@ -51,7 +52,7 @@ void NDClient::Start (std::string srv_addr)
 	std::cout << netAllowFallbackToPlainTCP ( false ) << std::endl;
 	std::cout << netSetReconnectLimit ( 10 ) << std::endl;
 	std::cout << netSetReconnectInterval ( 500 ) << std::endl;
-	std::cout << netSetPathToPublicKey ( "/home/w/Downloads/libmin/src/assets/server-client.pem" ) << std::endl;
+	std::cout << netSetPathToPublicKey ( "server_pubkey.pem" ) << std::endl;
 
 	// start timer
 	m_currtime.SetTimeNSec();	
@@ -74,6 +75,7 @@ void NDClient::Start (std::string srv_addr)
 	// not yet connected (see Run func)
 	mSock = NET_NOT_CONNECTED; 
 }
+
 
 void NDClient::Reconnect ()
 {   
@@ -207,6 +209,8 @@ int main (int argc, char* argv[])
 	// - for NVTX the nvToolsExt64_1.dll must be present
 	// - enable this line to see profiling:
 	// PERF_INIT ( 64, true, true, true, 0, "" );	
+
+	addSearchPath ( ASSET_PATH );
 
 	NDClient cli;
 
