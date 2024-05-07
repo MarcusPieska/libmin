@@ -48,7 +48,7 @@ void NDClient::Start (std::string srv_addr)
 	bool bVerbose = true;
 
 	std::cout << netSetSecurityLevel ( 1 ) << std::endl;
-	std::cout << netAllowFallbackToPlainTCP ( false ) << std::endl;
+	std::cout << netAllowFallbackToPlainTCP ( true ) << std::endl;
 	std::cout << netSetReconnectLimit ( 10 ) << std::endl;
 	std::cout << netSetReconnectInterval ( 500 ) << std::endl;
 	std::cout << netSetPathToPublicKey ( "/home/w/Downloads/libmin/src/assets/server-client.pem" ) << std::endl;
@@ -114,7 +114,8 @@ int NDClient::Process ( Event& e )
 	case 'sOkT': {
 		// Connection complete. server accepted OK.
 		int srv_sock = e.getInt();		// server sock
-		int cli_sock = e.getInt();		// local socket 
+		int cli_sock = e.getInt();		// local socket
+		mSock = cli_sock; 
 		dbgprintf( "  Connected to server: %s, %d\n", getSock( cli_sock )->dest.name.c_str ( ), srv_sock );
 
 		return 1;
