@@ -516,6 +516,8 @@ void NetworkSystem::netFreeSSL ( int sock_i )
 
 void NetworkSystem::netServerSetupHandshakeSSL ( int sock_i ) 
 {
+	char msg[2048];
+
 	TRACE_ENTER ( (__func__) );
 	NetSock& s = m_socks [ sock_i ];
 	make_sock_no_delay ( s.socket );
@@ -548,16 +550,20 @@ void NetworkSystem::netServerSetupHandshakeSSL ( int sock_i )
 	} else {
 		handshake_print ( "Call to default verify paths succeded" );
 	}
-	if ( ( ret = SSL_CTX_load_verify_locations ( s.ctx, m_pathCertFile.c_str ( ) , m_pathCertDir.c_str ( ) ) ) <= 0) {
-		netPrintError ( ret, "Load verify locations failed" );
-	} else {
-		handshake_print ( "Call to load verify locations succeded" );
+	if ( !m_pathCertFile.empty() || !m_pathCertDir.empty() ) {
+		if ( ( ret = SSL_CTX_load_verify_locations ( s.ctx, m_pathCertFile.c_str ( ) , m_pathCertDir.c_str ( ) ) ) <= 0) {
+			sprintf ( msg, "Load verify locations failed on cert file: %s\n", m_pathCertFile.c_str() );
+			netPrintError ( ret, msg );
+		} else {
+			handshake_print ( "Call to load verify locations succeded" );
+		}
 	}
 
 	SSL_CTX_set_verify ( s.ctx, SSL_VERIFY_PEER, NULL );
 
 	if ( ( ret = SSL_CTX_use_certificate_file ( s.ctx, m_pathPublicKey.c_str ( ), SSL_FILETYPE_PEM ) ) <= 0 ) {
-		netPrintError ( ret, "Use certificate failed" );	
+		sprintf ( msg, "Use certificate failed on public key: %s\n", m_pathPublicKey.c_str() );		
+		netPrintError ( ret, msg );	
 		netFreeSSL ( sock_i ); 
 		TRACE_EXIT ( (__func__) );	
 		return;
@@ -566,7 +572,8 @@ void NetworkSystem::netServerSetupHandshakeSSL ( int sock_i )
 	}
 
 	if ( ( ret = SSL_CTX_use_PrivateKey_file ( s.ctx, m_pathPrivateKey.c_str ( ), SSL_FILETYPE_PEM ) ) <= 0 ) {
-		netPrintError ( ret, "Use private key failed" );
+		sprintf ( msg, "Use private key failed on %s\n", m_pathPrivateKey.c_str() );				
+		netPrintError ( ret, msg );
 		netFreeSSL ( sock_i ); 
 		TRACE_EXIT ( (__func__) );
 		return;
@@ -2094,26 +2101,50 @@ bool NetworkSystem::netAllowFallbackToPlainTCP ( bool allow, int sock_i )
 //----------------------------------------------------------------------------------------------------------------------
 
 bool NetworkSystem::netSetPathToPublicKey ( str path )
-{
-	m_pathPublicKey = path;
+{	
+	char msg[2048];
+	std::string found_path;
+	if ( !getFileLocation ( path, found_path ) ) {
+		sprintf ( msg, "Public key not found: %s\n", path.c_str() );
+		netPrintError ( msg );
+		return false;
+	}
+	m_pathPublicKey = found_path;	
 	return true;
 }
 
 bool NetworkSystem::netSetPathToPrivateKey ( str path )
 {
-	m_pathPrivateKey = path;
+	char msg[2048];
+	std::string found_path;
+	if ( !getFileLocation ( path, found_path ) ) {
+		sprintf ( msg, "Private key not found: %s\n", path.c_str() );
+		netPrintError ( msg );
+		return false;	
+	}
+	m_pathPrivateKey = found_path;	
 	return true;
 }
 
 bool NetworkSystem::netSetPathToCertDir ( str path )
 {
+	char buf[2048];
+	strncpy ( buf, path.c_str(), 2048) ;
+	addSearchPath ( buf );
 	m_pathCertDir = path;
 	return true;
 }
 
 bool NetworkSystem::netSetPathToCertFile ( str path )
 {
-	m_pathCertFile = path;
+	char msg[2048];
+	std::string found_path;
+	if ( !getFileLocation ( path, found_path ) ) {
+		sprintf ( msg, "Cert file not found: %s\n", path.c_str() );
+		netPrintError ( msg );
+		return false;	
+	}
+	m_pathCertFile = found_path;		
 	return true;
 }
 
