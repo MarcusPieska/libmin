@@ -38,7 +38,7 @@ void NDServer::Start ()
 	bool bVerbose = true;
 
 	std::cout << netSetSecurityLevel ( 1 ) << std::endl;
-	std::cout << netAllowFallbackToPlainTCP ( false ) << std::endl;
+	std::cout << netAllowFallbackToPlainTCP ( true ) << std::endl;
 	std::cout << netSetReconnectLimit ( 10 ) << std::endl;
 	std::cout << netSetPathToPublicKey ( "server_pubkey.pem" ) << std::endl;
 	std::cout << netSetPathToPrivateKey ( "server_private.pem" ) << std::endl;
@@ -53,7 +53,7 @@ void NDServer::Start ()
 	// start server listening
 	int srv_port = 16101;
 	netServerStart ( srv_port + 0, 1 );
-	// netServerStart ( srv_port + 1, 0 );
+	netServerStart ( srv_port + 1, 0 );
 	netSetUserCallback ( &NetEventCallback );
 
 	netPrint ();
