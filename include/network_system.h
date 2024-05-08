@@ -230,6 +230,7 @@ private: // Functions
 	unsigned long CXSocketReadBytes ( SOCKET sock_h );
 	int CXSocketIvalid ( SOCKET sock_h );
 	int CXSocketError ( SOCKET sock_h );
+	bool CXSocketBlockError ( );
 	str CXGetErrorMsg ( int& error_id );
 	void CXSocketUpdateAddr ( int sock_i, bool src = true );
 	void CXSocketClose ( SOCKET sock_h );

@@ -9,19 +9,24 @@
 #include "network_system.h"
 
 #ifdef __linux__
-  #include <net/if.h>
-  #include <netinet/in.h>
-  #include <netinet/tcp.h> 
-  #include <sys/stat.h>
+	#include <net/if.h>
+	#include <netinet/in.h>
+	#include <netinet/tcp.h> 
+	#include <sys/stat.h>
+	#include <errno.h>
+#elif _WIN32
+	#include <winsock2.h>
 #elif __ANDROID__
-  #include <net/if.h>
-  #include <netinet/in.h>
-  #include <netinet/tcp.h> 
+	#include <net/if.h>
+	#include <netinet/in.h>
+	#include <netinet/tcp.h> 
 #endif
+
+//#undef BUILD_OPENSSL
 
 #ifdef BUILD_OPENSSL
 	#include <openssl/opensslv.h>
-  #include <openssl/crypto.h>
+	#include <openssl/crypto.h>
 	#include <openssl/pem.h>
 	#include <openssl/err.h>
 	#include <openssl/md5.h>
@@ -256,6 +261,17 @@ inline int NetworkSystem::CXSocketError ( SOCKET sock_h )
 	#else
 		TRACE_EXIT ( (__func__) );
 		return sock_h < 0;
+	#endif
+}
+
+inline bool NetworkSystem::CXSocketBlockError ( )
+{
+	#ifdef __linux__
+		return errno == EAGAIN || errno == EWOULDBLOCK;
+    #elif _WIN32
+		return WSAGetLastError ( ) == WSAEWOULDBLOCK;
+	#else
+		return false;
 	#endif
 }
 
@@ -517,9 +533,8 @@ void NetworkSystem::netFreeSSL ( int sock_i )
 
 void NetworkSystem::netServerSetupHandshakeSSL ( int sock_i ) 
 {
-	char msg[2048];
-
 	TRACE_ENTER ( (__func__) );
+	char msg[ 2048 ];
 	NetSock& s = m_socks [ sock_i ];
 	make_sock_no_delay ( s.socket );
 	int ret = 0, exp;
@@ -1428,7 +1443,7 @@ int NetworkSystem::netRecieveData ( int sock_i )
 	bool bDeserial;
 	while ( m_bufferLen > 0 ) {
 		if ( m_event.isEmpty ( ) ) { // Check the type of incoming socket
-			if (m_socks[ sock_i ].blocking) {
+			if ( m_socks[ sock_i ].blocking ) {
 				// Blocking socket. NOT an Event socket. Attach arbitrary data onto a new event.
 				m_eventLen = m_bufferLen;
 				m_event = new_event(m_eventLen + 128, 'app ', 'HTTP', 0, m_eventPool);
@@ -1674,7 +1689,7 @@ bool NetworkSystem::netSendLiteral ( str str_lit, int sock_i )
 	}
 	free( buf );
 	TRACE_EXIT ( (__func__) );
-	return netCheckError ( result, sock_i );		
+	return CXSocketBlockError ( ) || netCheckError ( result, sock_i );		
 }
 
 bool NetworkSystem::netCheckError ( int result, int sock_i )
@@ -1689,7 +1704,6 @@ bool NetworkSystem::netCheckError ( int result, int sock_i )
 	TRACE_EXIT ( (__func__) );
 	return true;
 }
-
 
 bool NetworkSystem::netSend ( Event& e, int sock_i )
 {
@@ -1734,7 +1748,7 @@ bool NetworkSystem::netSend ( Event& e, int sock_i )
 		result = sendto ( s.socket, buf, len, 0, (sockaddr*) &s.dest.addr, addr_size ); // UDP
 	}
 	TRACE_EXIT ( (__func__) );
-	return netCheckError ( result, sock_i ); // Check connection
+	return CXSocketBlockError ( ) || netCheckError ( result, sock_i ); // Check connection
 }
 
 int NetworkSystem::netSocketAdd ( int sock_i )
@@ -1860,7 +1874,7 @@ int NetworkSystem::netSocketRecv ( int sock_i, char* buf, int buflen, int& recvl
 		TRACE_EXIT ( (__func__) );
 		return ECONNREFUSED;
 	}	
-	netCheckError ( result, sock_i ); // Check connection
+	bool outcome = CXSocketBlockError ( ) || netCheckError ( result, sock_i ); // Check connection
 	recvlen = result;
 	TRACE_EXIT ( (__func__) );
 	return 0;
