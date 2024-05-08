@@ -188,9 +188,9 @@ inline void NetworkSystem::CXSocketMakeBlock ( SOCKET sock_h, bool block )
 		unsigned long block_mode = block ? 1 : 0; 
 		ioctlsocket ( sock_h, FIONBIO, &block_mode ); // FIONBIO = non-blocking mode	
 	#else // linux
-		int flags = fcntl ( sock_h, F_GETFL, 0 );
+		int flags = fcntl ( sock_h, F_GETFL, 0 ), ret;
 		if ( flags == -1 ) {
-			perror ( "get flags failed" );
+			netPrintError( flags, "Failed at: fcntl F_GETFL" );
 			return;
 			TRACE_EXIT ( (__func__) );
 		} else {
@@ -203,8 +203,8 @@ inline void NetworkSystem::CXSocketMakeBlock ( SOCKET sock_h, bool block )
 			flags |= O_NONBLOCK;
 		}
 
-		if ( fcntl ( sock_h, F_SETFL, flags ) == -1 ) {
-			perror ( "set blocking option failed" );
+		if ( ( ret = fcntl ( sock_h, F_SETFL, flags ) ) == -1 ) {
+			netPrintError( ret, "Failed at: fcntl F_SETFL" );
 		} else {
 			verbose_print ( "Call to set blocking succeded" );
 		}
@@ -216,15 +216,16 @@ unsigned long NetworkSystem::CXSocketReadBytes ( SOCKET sock_h )
 {   
 	TRACE_ENTER ( (__func__) );
 	unsigned long bytes_avail;
+	int ret;
 	#ifdef _WIN32 // windows
-		if ( ioctlsocket ( sock_h, FIONREAD, &bytes_avail ) == -1 ) {
-			perror ( "ioctl FIONREAD" );
+		if ( ( ret = ioctlsocket ( sock_h, FIONREAD, &bytes_avail ) ) == -1 ) {
+			netPrintError( ret, "Failed at: ioctlsocket FIONREAD" );
 			bytes_avail = -1;
 		} 
 	#else		
 	    int bytes_avail_int;
-		if ( ioctl ( sock_h, FIONREAD, &bytes_avail_int ) == -1 ) {
-			perror ( "ioctl FIONREAD" );
+		if ( ( ret = ioctl ( sock_h, FIONREAD, &bytes_avail_int ) ) == -1 ) {
+			netPrintError( ret, "Failed at: ioctl FIONREAD" );
 			bytes_avail = -1;
 		} else {
 			bytes_avail = (unsigned long) bytes_avail_int;
@@ -258,7 +259,7 @@ inline int NetworkSystem::CXSocketError ( SOCKET sock_h )
 	#endif
 }
 
-str NetworkSystem::CXGetErrorMsg ( int& error_id )
+inline str NetworkSystem::CXGetErrorMsg ( int& error_id )
 {
 	TRACE_ENTER ( (__func__) );
 	#ifdef _WIN32 // get error on windows
@@ -456,9 +457,9 @@ unsigned long NetworkSystem::get_read_ready_bytes ( SOCKET sock_h )
 void NetworkSystem::make_sock_no_delay ( SOCKET sock_h ) 
 {
 	TRACE_ENTER ( (__func__) );
-	int no_delay = 1;
-	if ( setsockopt ( sock_h, IPPROTO_TCP, TCP_NODELAY, (char *) &no_delay, sizeof ( no_delay ) ) < 0) {
-		perror( "Call to no delay FAILED" );
+	int no_delay = 1, ret;
+	if ( ( ret = setsockopt ( sock_h, IPPROTO_TCP, TCP_NODELAY, (char *) &no_delay, sizeof ( no_delay ) ) ) < 0 ) {
+		netPrintError ( ret, "Failed at: set no delay" );
 	}  
 	else {
 		verbose_debug_print ( "Call to no delay succeded" );
@@ -527,7 +528,7 @@ void NetworkSystem::netServerSetupHandshakeSSL ( int sock_i )
 	s.state = STATE_FAILED; 
 
 	if ( ( s.ctx = SSL_CTX_new ( TLS_server_method ( ) ) ) == 0 ) {
-		perror ( "get new ssl ctx failed" );
+		netPrintError( 0, "Failed at: new ssl ctx" );
 		netFreeSSL ( s.socket );
 		TRACE_EXIT ( (__func__) );
 		return;
@@ -536,8 +537,8 @@ void NetworkSystem::netServerSetupHandshakeSSL ( int sock_i )
 	dbgprintf ( "OpenSSL: %s\n", OPENSSL_VERSION_TEXT ); // Openssl version 
 
 	exp = SSL_OP_SINGLE_DH_USE;
-	if (((ret = SSL_CTX_set_options( s.ctx, exp )) & exp) != exp ) {
-		perror( "set ssl option failed" );
+	if ( ( ( ret = SSL_CTX_set_options ( s.ctx, exp ) ) & exp ) != exp ) {
+		netPrintError( ret, "Failed at: set ssl option" );
 		netFreeSSL ( sock_i );
 		TRACE_EXIT ( (__func__) );
 		return;
@@ -553,8 +554,9 @@ void NetworkSystem::netServerSetupHandshakeSSL ( int sock_i )
 	sprintf ( msg, "Trusted cert paths. CAfile=%s, CAdir=%s\n", m_pathCertFile.c_str(), m_pathCertDir.c_str() );
 	handshake_print ( msg );
 
-	if ( !m_pathCertFile.empty() || !m_pathCertDir.empty() ) {
-		if ( ( ret = SSL_CTX_load_verify_locations ( s.ctx, m_pathCertFile.c_str ( ) , m_pathCertDir.c_str ( ) ) ) <= 0) {
+	if ( ! m_pathCertFile.empty ( ) || ! m_pathCertDir.empty ( ) ) {
+		ret = ret = SSL_CTX_load_verify_locations ( s.ctx, m_pathCertFile.c_str ( ) , m_pathCertDir.c_str ( ) );
+		if ( ret <= 0 ) {
 			sprintf ( msg, "Load verify locations failed on cert file: %s\n", m_pathCertFile.c_str() );
 			netPrintError ( ret, msg );
 		} else {
@@ -576,7 +578,7 @@ void NetworkSystem::netServerSetupHandshakeSSL ( int sock_i )
 	}
 
 	if ( ( ret = SSL_CTX_use_PrivateKey_file ( s.ctx, m_pathPrivateKey.c_str ( ), SSL_FILETYPE_PEM ) ) <= 0 ) {
-		sprintf ( msg, "Use private key failed on %s\n", m_pathPrivateKey.c_str() );				
+		sprintf ( msg, "Use private key failed on %s\n", m_pathPrivateKey.c_str ( ) );				
 		netPrintError ( ret, msg );
 		netFreeSSL ( sock_i ); 
 		TRACE_EXIT ( (__func__) );
@@ -586,8 +588,8 @@ void NetworkSystem::netServerSetupHandshakeSSL ( int sock_i )
 	}
 
 	s.ssl = SSL_new ( s.ctx );
-	if ( SSL_set_fd ( s.ssl, s.socket ) <= 0 ) {
-		perror( "set ssl fd failed" );
+	if ( ( ret = SSL_set_fd ( s.ssl, s.socket ) ) <= 0 ) {
+		netPrintError ( ret, "Failed at: set ssl fd" );
 		netFreeSSL ( sock_i ); 
 		TRACE_EXIT ( (__func__) );
 		return;
@@ -800,8 +802,8 @@ void NetworkSystem::netClientSetupHandshakeSSL ( int sock_i )
 	//s.bio = BIO_new_socket ( s.socket, BIO_NOCLOSE );
 
 	s.ctx = SSL_CTX_new ( TLS_client_method ( ) );
-	if ( !s.ctx ) {
-		perror ( "ctx failed" );
+	if ( ! s.ctx ) {
+		netPrintError ( 0, "Failed at: new ctx" );
 		ERR_print_errors_fp ( stderr );
 		netFreeSSL ( sock_i );
 		TRACE_EXIT ( (__func__) );
@@ -817,7 +819,6 @@ void NetworkSystem::netClientSetupHandshakeSSL ( int sock_i )
 
 	if ( !SSL_CTX_load_verify_locations( s.ctx, m_pathPublicKey.c_str ( ), NULL ) ) {
 		sprintf ( msg, "Load verify failed on public key: %s\n", m_pathPublicKey.c_str() );
-		perror ( msg );
 		ERR_print_errors_fp ( stderr );
 		netFreeSSL ( sock_i );
 		TRACE_EXIT ( (__func__) );
@@ -827,8 +828,8 @@ void NetworkSystem::netClientSetupHandshakeSSL ( int sock_i )
 	}		
 
 	s.ssl = SSL_new ( s.ctx );
-	if ( !s.ssl ) {
-		perror ( "ssl failed" );
+	if ( ! s.ssl ) {
+		netPrintError ( 0, "Failed at: new ssl" );
 		ERR_print_errors_fp ( stderr );
 		netFreeSSL ( sock_i ); 
 		TRACE_EXIT ( (__func__) );
@@ -837,8 +838,8 @@ void NetworkSystem::netClientSetupHandshakeSSL ( int sock_i )
 		handshake_print ( "Call to ssl succeded" );
 	}	
 
-	if ( SSL_set_fd ( s.ssl, s.socket ) != 1 ) {
-		perror ( "ssl set fd failed" );	
+	if ( ( ret = SSL_set_fd ( s.ssl, s.socket ) ) != 1 ) {
+		netPrintError ( ret, "Failed at: set fd failed" );
 		netFreeSSL ( sock_i );
 		TRACE_EXIT ( (__func__) ); 	
 		return;
@@ -1341,12 +1342,10 @@ str NetworkSystem::netPrintError ( int ret, str msg, SSL* sslsock )
 {		 
 	TRACE_ENTER ( (__func__) );
 	msg = "ERROR: " + msg + "\n ";
-
-	// append, error code for SSL socket
-	#ifdef BUILD_OPENSSL
+	#ifdef BUILD_OPENSSL // Append, error code for SSL socket
 		if ( sslsock != 0x0 ) { 	
-			 int code = SSL_get_error (sslsock, ret );
-			 switch (code)
+			 int code = SSL_get_error ( sslsock, ret );
+			 switch ( code )
 			 {
 			 case SSL_ERROR_NONE:					msg += "The TLS/SSL I/O operation completed."; break;
 			 case SSL_ERROR_ZERO_RETURN:  msg += "The TLS/SSL connection has been closed."; break;
@@ -1364,21 +1363,18 @@ str NetworkSystem::netPrintError ( int ret, str msg, SSL* sslsock )
 			 };		 
 			 msg += "\n ";
 		 }	 	
-
-	 // append, SSL error queue 
-	 char buf[ 512 ];
-	 unsigned long err = ERR_get_error ( );
-	 if ( err==0 ) {
-		 msg += "No additional SSL error info.\n";
-	 } else {
-		 while ( err != 0 ) {
-			 ERR_error_string ( err, buf );
-			 msg += str ( buf ) + "\n ";
-			 err = ERR_get_error ( );
-		 }	 
-	 }
+		 char buf[ 512 ]; // append, SSL error queue 
+		 unsigned long err = ERR_get_error ( );
+		 if ( err==0 ) {
+			 msg += "No additional SSL error info.\n";
+		 } else {
+			 while ( err != 0 ) {
+				 ERR_error_string ( err, buf );
+				 msg += str ( buf ) + "\n ";
+				 err = ERR_get_error ( );
+			 }	 
+		 }
 	#endif
-	
 	debug_print ( "%s\n", msg.c_str ( ) );
 	TRACE_EXIT ( (__func__) );
 	return msg;
