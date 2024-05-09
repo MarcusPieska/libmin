@@ -63,6 +63,10 @@
 
 #define NET_BUFSIZE			65535		// Typical UDP max packet size
 
+#define PRINT_VERBOSE 0
+#define PRINT_ERROR 1
+#define PRINT_ERROR_SSL 2
+
 // -- NOTES --
 // IP               = 20 bytes
 // UDP = IP + 8     = 28 bytes
@@ -91,8 +95,7 @@ public:
 	void netInitialize ( );
 	void netCreate ( );
 	void netDestroy ( );
-	void netDebug ( bool v )	{ m_printDebugNet = v; m_printVerbose = v;  }
-	void netVerbose ( bool v )	{ m_printVerbose = v; }
+	void netVerbose ( bool v ) { m_printVerbose = v; }
 	void netPrint ( bool verbose = false );
 	str netPrintAddr ( NetAddr adr );
 	
@@ -171,7 +174,8 @@ private: // Functions
 	// Handling non-blocking OpenSSL handshake
 	#ifdef BUILD_OPENSSL
 		void netFreeSSL ( int sock_i ); 
-		int netCheckErrorSSL ( int sock_i, int ret ); 
+		str netGetGetErrorStringSSL ( int ret, SSL* ssl );
+		int netNoFatalErrorSSL ( int sock_i, int ret ); 
 		void netServerSetupHandshakeSSL ( int sock_i ); 
 		void netServerAcceptSSL ( int sock_i );
 		void netClientSetupHandshakeSSL ( int sock_i ); 
@@ -188,7 +192,6 @@ private: // Functions
 	int netDeleteSocket ( int sock_i, int force=0 );
 	bool netIsError ( int result );	// Socket-specific error check
 	void netReportError ( int result );
-	str netPrintError ( int ret, str msg, SSL* sslsock=0x0 );
 
 	// Low level handling of sockets
 	void netStartSocketAPI ( );
@@ -197,7 +200,7 @@ private: // Functions
 	int netSocketBind ( int sock_i );	
 	int netSocketConnect ( int sock_i );
 	int netSocketListen ( int sock_i );
-	int netSocketAccept ( int sock_i,  SOCKET& tcp_sock, netIP& cli_ip, netPort& cli_port  );	
+	int netSocketAccept ( int sock_i,  SOCKET& tcp_sock, netIP& cli_ip, netPort& cli_port );	
 	int netSocketRecv ( int sock_i, char* buf, int buflen, int& recvlen); 
 	bool netSocketIsConnected ( int sock_i );
 	bool netSocketSetForRead ( fd_set* sockSet, int sock_i );
@@ -212,10 +215,7 @@ private: // Functions
 	bool invalid_socket_index ( int sock_i );
 	
 	// Handling tracing and logging
-	template<typename... Args> void verbose_print ( const char* fmt, Args... args );
-	template<typename... Args> void debug_print ( const char* fmt, Args... args );
-	template<typename... Args> void handshake_print ( const char* fmt, Args... args );
-	template<typename... Args> void verbose_debug_print ( const char* fmt, Args... args );
+	str netPrintf ( int flag, const char* fmt, ... );
 	double get_time ( );
 	void trace_setup ( const char* function_name );
 	void trace_enter ( const char* function_name );
@@ -265,9 +265,7 @@ private: // State
 	// Debug and trace related
 	int	m_check;
 	int m_indentCount;
-	bool m_printDebugNet;
 	bool m_printVerbose;
-	bool m_printHandshake;
 	FILE* m_trace;
 	TimeX m_refTime;
 	
