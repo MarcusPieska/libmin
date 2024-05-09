@@ -96,7 +96,7 @@ public:
 	void netCreate ( );
 	void netDestroy ( );
 	void netVerbose ( bool v ) { m_printVerbose = v; }
-	void netList ( bool verbose = false );			// list all connections/sockets
+	void netList ( bool verbose = false ); // list all connections/sockets
 	str netPrintAddr ( NetAddr adr );
 	
 	// Miscellaneous config API

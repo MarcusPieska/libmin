@@ -63,7 +63,6 @@ void NDClient::Start (std::string srv_addr)
 	// start networking
 	netInitialize();
 	netVerbose( bVerbose );
-	netDebug( bDebug );	
 
 	// start client on random port
 	int cli_port = 10000 + rand() % 9000;
@@ -89,7 +88,7 @@ void NDClient::Reconnect ()
 
 	std::cout << "=========================================" << std::endl;
 
-	netPrint (true);
+	//netList (true);
 }
 
 void NDClient::Close ()

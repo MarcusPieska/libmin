@@ -48,7 +48,6 @@ void NDServer::Start ()
 	// start networking
 	netInitialize();
 	netVerbose( bVerbose );
-	netDebug( bDebug );
 	
 	// start server listening
 	int srv_port = 16101;
@@ -56,7 +55,7 @@ void NDServer::Start ()
 	netServerStart ( srv_port + 1, 0 );
 	netSetUserCallback ( &NetEventCallback );
 
-	netPrint ();
+	//netList (true);
 	
 	dbgprintf ( "Server IP: %s\n", getIPStr ( getHostIP() ).c_str() );	
 	dbgprintf ( "Listening on %d..\n", srv_port );
