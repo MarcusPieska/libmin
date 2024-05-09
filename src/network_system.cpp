@@ -762,7 +762,7 @@ void NetworkSystem::netServerCompleteConnection ( int sock_i )
 	(*m_userEventCallback) ( ue, this ); // Send to application
 
 	netPrintf ( PRINT_VERBOSE, "  %s %s: Accepted ip %s, port %i on port %d", (s.side == NET_CLI) ? "Client" : "Server", getIPStr(m_hostIp).c_str(), getIPStr(s.dest.ipL).c_str(), s.dest.port, s.src.port );
-	netPrint ( );
+	netList ( );
 	TRACE_EXIT ( (__func__) );
 }
 
@@ -1078,7 +1078,7 @@ int NetworkSystem::netCloseAll ( )
 	for ( int n = 0; n < m_socks.size ( ); n++ ) {
 		netCloseConnection ( n );
 	}
-	netPrint( );
+	netList ( );
 	TRACE_EXIT ( (__func__) );
 	return 1;
 }
@@ -1162,7 +1162,7 @@ void NetworkSystem::netProcessEvents ( Event& e )
 			(*m_userEventCallback) ( e, this ); // Send to application
 
 			netPrintf ( PRINT_VERBOSE, "  Client:   Linked TCP. %s:%d, sock: %d --> Server: %s:%d, sock: %d", getIPStr(cli_ip).c_str(), cli_port, cli_sock, getIPStr(srv_ip).c_str(), srv_port, srv_sock );
-			netPrint ( );
+			netList ( );
 			break;
 		} 
 		case 'sExT': { // Server recv, exit TCP from client. sEnT
@@ -1171,7 +1171,7 @@ void NetworkSystem::netProcessEvents ( Event& e )
 			netIP cli_ip = m_socks[ local_sock_i ].dest.ipL;
 			netPrintf ( PRINT_VERBOSE, "  Server: Client %s closed OK", getIPStr ( cli_ip ).c_str ( ) );
 			netManageFatalError ( local_sock_i );
-			netPrint ( );
+			netList ( );
 			break;
 		}
 	}
@@ -1556,7 +1556,7 @@ str NetworkSystem::netPrintAddr ( NetAddr adr )
 	return buf;
 }
 
-void NetworkSystem::netPrint ( bool verbose )
+void NetworkSystem::netList ( bool verbose )
 {
 	TRACE_ENTER ( (__func__) );
 	if ( m_printVerbose || verbose ) { // Print the network

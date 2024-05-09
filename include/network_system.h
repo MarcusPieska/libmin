@@ -96,7 +96,7 @@ public:
 	void netCreate ( );
 	void netDestroy ( );
 	void netVerbose ( bool v ) { m_printVerbose = v; }
-	void netPrint ( bool verbose = false );
+	void netList ( bool verbose = false );			// list all connections/sockets
 	str netPrintAddr ( NetAddr adr );
 	
 	// Miscellaneous config API
@@ -146,8 +146,7 @@ public:
 	int netEventCallback ( Event& e ); // Processes network events (dispatch)
 	void netSetUserCallback ( funcEventHandler userfunc )	{ m_userEventCallback = userfunc; }
 	bool netIsConnectComplete ( int sock_i );
-	bool netCheckError ( int result, int sock_i );
-	int netPrintError ( str msg, int error_id = 0 );
+	bool netCheckError ( int result, int sock_i );	
 	
 	// Accessors
 	TimeX		getSysTime ( )				{ return TimeX::GetSystemNSec ( ); }
