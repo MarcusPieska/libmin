@@ -819,7 +819,6 @@ void NetworkSystem::netClientSetupHandshakeSSL ( int sock_i )
 	s.ctx = SSL_CTX_new ( TLS_client_method ( ) );
 	if ( ! s.ctx ) {
 		netPrintError ( 0, "Failed at: new ctx" );
-		ERR_print_errors_fp ( stderr );
 		netFreeSSL ( sock_i );
 		TRACE_EXIT ( (__func__) );
 		return;
@@ -834,7 +833,6 @@ void NetworkSystem::netClientSetupHandshakeSSL ( int sock_i )
 
 	if ( !SSL_CTX_load_verify_locations( s.ctx, m_pathPublicKey.c_str ( ), NULL ) ) {
 		sprintf ( msg, "Load verify failed on public key: %s\n", m_pathPublicKey.c_str() );
-		ERR_print_errors_fp ( stderr );
 		netFreeSSL ( sock_i );
 		TRACE_EXIT ( (__func__) );
 		return;
@@ -845,7 +843,6 @@ void NetworkSystem::netClientSetupHandshakeSSL ( int sock_i )
 	s.ssl = SSL_new ( s.ctx );
 	if ( ! s.ssl ) {
 		netPrintError ( 0, "Failed at: new ssl" );
-		ERR_print_errors_fp ( stderr );
 		netFreeSSL ( sock_i ); 
 		TRACE_EXIT ( (__func__) );
 		return;
@@ -1857,7 +1854,7 @@ int NetworkSystem::netSocketRecv ( int sock_i, char* buf, int buflen, int& recvl
 				result = SSL_read( s.ssl, buf, buflen );
 				if ( result <= 0 ) {	
 					int ssl_error = SSL_get_error ( s.ssl, result );
-					ERR_print_errors_fp ( stdout );
+					netPrintError ( ssl_error, "Failed at: SSL_read" );
 					if ( ssl_error == SSL_ERROR_WANT_READ || ssl_error == SSL_ERROR_WANT_WRITE ) {
 						TRACE_EXIT ( (__func__) );
 						return SSL_ERROR_WANT_READ;
