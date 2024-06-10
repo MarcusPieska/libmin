@@ -36,15 +36,15 @@ if len(sys.argv) > 1:
 
 if "1" in steps_to_run or "topo" in steps_to_run:
 	print("\n*** Spawning new nodes")
+	
 	execute_command("sysctl -w net.ipv4.tcp_rmem='16384 16777216 268435456'")
 	execute_command("sysctl -w net.ipv4.tcp_wmem='16384 16777216 268435456'")
 	execute_command("sysctl -w net.ipv4.tcp_mem='16384 16777216 268435456'")
 	execute_command("sysctl -w net.ipv4.tcp_timestamps=0")
-	execute_command("sysctl -w net.core.rmem_default=268435456")
-	execute_command("sysctl -w net.core.rmem_max=268435456")
-	execute_command("sysctl -w net.core.wmem_default=268435456")
-	execute_command("sysctl -w net.core.wmem_max=268435456")
-	execute_command("sysctl -w net.ipv4.udp_mem='82164 109552 268435456'")
+	#execute_command("sysctl -w net.core.rmem_default=268435456")
+	#execute_command("sysctl -w net.core.rmem_max=268435456")
+	#execute_command("sysctl -w net.core.wmem_default=268435456")
+	#execute_command("sysctl -w net.core.wmem_max=268435456")
 	execute_command("sysctl net.ipv4.tcp_congestion_control=bbr")
 
 	print("\n*** Creating namespace: emu-h1")

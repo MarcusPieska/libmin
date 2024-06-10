@@ -1,0 +1,8 @@
+
+g++ -c -std=c++11 -fPIC -c app-tcp-tx.c
+g++ -o app-tcp-tx -pie -rdynamic app-tcp-tx.o -lpthread
+rm app-tcp-tx.o
+
+g++ -c -std=c++11 -fPIC -c app-tcp-rx.c
+g++ -o app-tcp-rx -pie -rdynamic app-tcp-rx.o -lpthread
+rm app-tcp-rx.o
