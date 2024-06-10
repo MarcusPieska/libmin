@@ -186,7 +186,7 @@ int main (int argc, char* argv[])
 {
 	addSearchPath ( ASSET_PATH );
 
-	NDServer srv;
+	NDServer srv ( "../trace-func-call-server" );
 
 	srv.Start ();
 	srv.InitWords ();

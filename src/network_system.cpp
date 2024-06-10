@@ -45,23 +45,22 @@ double NetworkSystem::get_time ( )
 	return current_time.GetElapsedSec ( m_refTime );
 }
 
-void NetworkSystem::trace_setup ( const char* function_name )
+void NetworkSystem::trace_setup ( const char* trace_file_path )
 {
-	m_trace = fopen ( function_name, "w" );
+	m_trace = fopen ( trace_file_path, "w" );
 	if ( m_trace == 0 ) {
 		netPrintf ( PRINT_ERROR, "Could not open trace file: Errno: %d", errno );
 		return;
 	}
 	m_refTime.SetTimeNSec ( );
 	#ifdef __linux__
-		chmod ( function_name, S_IRWXO ); 
+		chmod ( trace_file_path, S_IRWXO ); 
 	#endif
 }
 
 void NetworkSystem::trace_enter ( const char* function_name ) 
 {
 	if ( m_trace == 0 ) {
-		netPrintf ( PRINT_VERBOSE, "Trace file not yet opened: Call from: %s", function_name );
 		return;
 	}
 	str pad ( m_indentCount * 2, ' ' );
@@ -73,7 +72,6 @@ void NetworkSystem::trace_enter ( const char* function_name )
 void NetworkSystem::trace_exit ( const char* function_name )
 {
 	if ( m_trace == 0 ) {
-		netPrintf ( PRINT_VERBOSE, "Trace file not yet opened: Call from: %s", function_name );
 		return;
 	}
 	m_indentCount--;
@@ -389,7 +387,7 @@ inline str NetworkSystem::CXGetIpStr ( netIP ip )
 // -> MAIN CODE <-
 //----------------------------------------------------------------------------------------------------------------------
 
-NetworkSystem::NetworkSystem ( )
+NetworkSystem::NetworkSystem ( const char* trace_file_name )
 {
 	m_hostType = ' ';
 	m_hostIp = 0;
@@ -410,7 +408,10 @@ NetworkSystem::NetworkSystem ( )
 	m_trace = 0;
 	m_check = 0;
 	m_indentCount = 0;
-
+	
+	if ( trace_file_name != NULL ) {
+		TRACE_SETUP (( trace_file_name ));
+	} 
 }
 
 void NetworkSystem::sleep_ms ( int time_ms ) 
@@ -663,10 +664,6 @@ void NetworkSystem::netServerAcceptSSL ( int sock_i )
 
 void NetworkSystem::netServerStart ( netPort srv_port, int security )
 {
-	if ( m_trace == 0 ) {
-		TRACE_SETUP (( "../trace-func-server" ));
-	}
-	
 	TRACE_ENTER ( (__func__) );
 	netPrintf ( PRINT_VERBOSE, "Start Server:" );
 	m_hostType = 's';
@@ -915,11 +912,10 @@ void NetworkSystem::netClientConnectSSL ( int sock_i )
 
 void NetworkSystem::netClientStart ( netPort cli_port, str srv_addr )
 {
-	if ( m_trace == 0 ) {
-		TRACE_SETUP (( "../trace-func-client" ));
-	}
-	
 	TRACE_ENTER ( (__func__) );
+	
+	netPrintf ( PRINT_ERROR, "Just testing: REMOVE THIS" ); // TODO
+	
 	eventStr_t sys = 'net '; 
 	m_hostType = 'c'; // Network System is running in client mode
 	netPrintf ( PRINT_VERBOSE, "Start Client:" );

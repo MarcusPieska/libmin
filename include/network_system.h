@@ -89,7 +89,7 @@ class HELPAPI NetworkSystem {
 #endif
 	
 public:
-	NetworkSystem ( );
+	NetworkSystem ( const char* trace_file_name = NULL );
 
 	// Network System
 	void netInitialize ( );

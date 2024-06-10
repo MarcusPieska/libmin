@@ -6,6 +6,8 @@
 
 	class NDServer : public NetworkSystem {
 	public:		
+		NDServer( const char* trace_file_name = NULL ) : NetworkSystem( trace_file_name ) { }
+	
 		// networking funcs
 		void Start ();
 		int Run ();		

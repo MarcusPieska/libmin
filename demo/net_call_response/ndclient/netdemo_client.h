@@ -6,6 +6,8 @@
 
 	class NDClient : public NetworkSystem {
 	public:		
+	    NDClient( const char* trace_file_name = NULL ) : NetworkSystem( trace_file_name ) { }
+	
 		// networking 
 		void Start ( std::string srv_addr );
 		void Reconnect ();

@@ -211,7 +211,7 @@ int main (int argc, char* argv[])
 
 	addSearchPath ( ASSET_PATH );
 
-	NDClient cli;
+	NDClient cli ( "../trace-func-call-client" );
 
 	cli.Start (get_addr(argc, argv));
 	cli.mHasConnected = false;
