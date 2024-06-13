@@ -20,6 +20,7 @@ if len(sys.argv) >= 2:
   do_server_timeout = True
 
 app = "net_call_response"
+app = "net_bulk_transfer"
 
 paths = ["../build/%s/ndserver/nd_server" %(app), "../build/%s/ndclient/nd_client" %(app)]
 addr = ["10.0.10.1", "10.0.20.2"]

@@ -7,6 +7,7 @@
   #include <stdio.h>
   #include <sys/ioctl.h>
   #include <termios.h>
+  #include <sys/stat.h>
 
   int _kbhit() {
     static const int STDIN = 0;
@@ -27,18 +28,57 @@
 
 #include "netdemo_server.h"
 
+FILE* setup_trace ( const char* trace_name ) {
+  FILE* trace_ptr;
+  trace_ptr = fopen (trace_name, "w");
+  chmod (trace_name, S_IRWXO);
+  return trace_ptr;
+}
+
+int init_buf ( char* buf, const int size ) {
+  for ( int i = 0, c = 65; i < size; i++ ) {
+    if ( i == size - 1 ) {
+      memset ( buf + i, '*', 1 );
+      memset ( buf + i + 1, '\0', 1 );
+    }
+    else if ( i % 50 == 49 ) {
+      memset ( buf + i, '\n', 1 );
+      c++;
+    }
+    else if ( i % 10 == 9 ) {
+      memset ( buf + i, c, 1 );
+    }
+    else {
+      memset ( buf + i, '-', 1 );
+    }
+  }
+  printf ( "*** Packet content:\n\n%s\n*** Size is %luB \n", buf, strlen ( buf ) );
+  return (int)strlen ( buf );
+}
+
 int NDServer::NetEventCallback (Event& e, void* this_pointer) {
     NDServer* self = static_cast<NDServer*>(this_pointer);
     return self->Process ( e );
+}
+
+double NDServer::GetUpTime ( ) 
+{
+	TimeX current_time;
+	current_time.SetTimeNSec ( );
+	return current_time.GetElapsedSec ( m_startTime );
 }
 
 void NDServer::Start ()
 {
 	bool bDebug = true;
 	bool bVerbose = true;
+	m_startTime.SetTimeNSec ( );
+	m_flowTrace = setup_trace ( "../tcp-app-rx-flow" );
+	m_pktSize = init_buf ( m_refPkt.buf, PKT_SIZE ) + sizeof ( int );
+	m_refPkt.seq_nr = 1;
 
-	std::cout << netSetSecurityLevel ( 1 ) << std::endl;
-	std::cout << netAllowFallbackToPlainTCP ( false ) << std::endl;
+	std::cout << netSetSecurityLevel ( 0 ) << std::endl;
+	std::cout << netAllowFallbackToPlainTCP ( true ) << std::endl;
 	std::cout << netSetReconnectLimit ( 10 ) << std::endl;
 	std::cout << netSetPathToPublicKey ( "/home/w/Downloads/libmin/src/assets/server-server.pem" ) << std::endl;
 	std::cout << netSetPathToPrivateKey ( "/home/w/Downloads/libmin/src/assets/server.key" ) << std::endl;
@@ -48,154 +88,82 @@ void NDServer::Start ()
 	// start networking
 	netInitialize();
 	netVerbose( bVerbose );
-	netDebug( bDebug );
 	
 	// start server listening
 	int srv_port = 16101;
-	netServerStart ( srv_port + 0, 1 );
+	netServerStart ( srv_port + 0, 0 );
 	// netServerStart ( srv_port + 1, 0 );
 	netSetUserCallback ( &NetEventCallback );
-
-	netPrint ();
 	
 	dbgprintf ( "Server IP: %s\n", getIPStr ( getHostIP() ).c_str() );	
 	dbgprintf ( "Listening on %d..\n", srv_port );
 }
 
-void NDServer::Close ()
+void NDServer::Close ( )
 {
-	
 }
 
-int NDServer::Run ()
+int NDServer::Run ( )
 {
-	// process event queue
 	return netProcessQueue ();
-}
-
-void NDServer::InitWords ()
-{
-	// demo app
-
-	for (int n=0; n<10; n++) wordlist.push_back("");
-
-	wordlist[0] = "zero";
-	wordlist[1] = "one";
-	wordlist[2] = "two";
-	wordlist[3] = "three";
-	wordlist[4] = "four";
-	wordlist[5] = "five";
-	wordlist[6] = "six";
-	wordlist[7] = "seven";
-	wordlist[8] = "eight";
-	wordlist[9] = "nine";	
-}
-
-std::string NDServer::ConvertToWords ( int num )
-{
-	// demo - this is the main task of the server
-	
-	std::string words = "==========";
-	int n = num;
-	int v;
-
-	while (n != 0 ) {
-		v = n % 10;
-		words = wordlist[v] + " " + words;
-		n /= 10;
-	}
-    words = "========== " + words;
-	return words;
-}
-
-void NDServer::SendWordsToClient ( std::string msg, int sock )
-{
-	// demo app protocol:
-	//
-	// cRqs - request the words for a number (c=msg from client)
-	// sRst - here is the result containing the words (s=msg from server)
-
-	// create sRst app event
-	Event e = new_event ( 120, 'app ', 'sRst', 0, getNetPool ( ) );	
-	e.attachStr ( msg );
-
-	netSend ( e, sock );		// send to specific client
 }
 
 int NDServer::Process ( Event& e )
 {
 	int sock;
-	std::string line;
-	eventStr_t sys = e.getTarget ();
+	str line;
+	eventStr_t sys = e.getTarget ( );
 
-	// Check for net error events
-	if ( sys == 'net ' && e.getName()=='nerr' ) {
+	if ( sys == 'net ' && e.getName ( ) == 'nerr' ) { // Check for net error events
 		// enable netVerbose(true) for detailed messages.
 		// application can gracefully handle specific net error codes here..		
-		int code = e.getInt ();		
-		if (code==NET_DISCONNECTED) {
+		int code = e.getInt ( );		
+		if ( code == NET_DISCONNECTED ) {
 			dbgprintf ( "  Connection to client closed unexpectedly.\n" );
 		}		
 		return 0;
 	}
 
-	// Process Network events
-	e.startRead ();
-	switch (e.getName()) {
-	case 'sOkT': 
-		// Connection to client complete. (telling myself)
-		sock = e.getInt();		// server sock		
+	e.startRead ( ); // Process Network events
+	switch ( e.getName ( ) ) {
+	case 'sOkT': // Connection to client complete. (telling myself)
+		sock = e.getInt ( ); // server sock		
 		dbgprintf ( "  Connected to client: #%d\n", sock );
 		return 1;
 		break;
-	case 'cFIN': 
-		// Client closed connection
-		sock = e.getInt();
+	case 'cFIN': // Client closed connection
+		sock = e.getInt ( );
 		dbgprintf ( "  Disconnected client: #%d\n", sock );
 		return 1;
 		break;		
 	};
 
-	// Process Application events
-	switch (e.getName()) {
+	switch ( e.getName ( ) ) { // Process Application events
 	case 'cRqs': 
-		// client requested words for num
-		int sock = e.getInt ();     // which client 
-		int seq = e.getInt (); 
-		e.getStr ();
-		int num = e.getInt ();	
-		e.getStr ();	
-
-		// convert the num to words 
-		std::string words = ConvertToWords ( num );
-
-		// send words back to client
-		SendWordsToClient ( words, sock );
-
-		dbgprintf ( "  Sent words to #%d: SEQ-%d: %d, %s\n", sock, seq, num, words.c_str() );
+		e.getBuf ( (char*)&m_rxPkt, m_pktSize );
+		int outcome = memcmp ( &m_refPkt, &m_rxPkt, m_pktSize );
+		m_refPkt.seq_nr++;
+		fprintf ( m_flowTrace, "%.3f:%u:%u:%d\n", GetUpTime ( ), m_rxPkt.seq_nr, m_pktSize, outcome );
+		fflush ( m_flowTrace );
+		if ( outcome != 0 ) {
+			std::cout << m_rxPkt.buf << std::endl;
+		}
+		dbgprintf ( "Received packet: SEQ-%d \n", m_rxPkt.seq_nr );
 		return 1;
 		break;
 	};
 
-	dbgprintf ( "   Unhandled message: %s\n", e.getNameStr().c_str() );
+	dbgprintf ( "   Unhandled message: %s\n", e.getNameStr( ).c_str( ) );
 	return 0;
 }
 
-
-
-int main (int argc, char* argv[])
+int main ( int argc, char* argv [ ] )
 {
-	NDServer srv;
-
-	srv.Start ();
-	srv.InitWords ();
-
-	while ( !_kbhit() ) {
-
-		srv.Run ();
+	NDServer srv ( "../trace-func-call-server" );
+	srv.Start ( );
+	while ( !_kbhit ( ) ) {
+		srv.Run ( );
 	}
-
-	srv.Close ();  
-	
+	srv.Close ( );  
 	return 1;
 }

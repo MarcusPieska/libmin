@@ -1,32 +1,44 @@
 
 #ifndef NETDEMO_CLIENT
-	#define NETDEMO_CLIENT
+#define NETDEMO_CLIENT
 
-	#include "network_system.h"
+#include "network_system.h"
 
-	class NDClient : public NetworkSystem {
-	public:		
-		// networking 
-		void Start ( std::string srv_addr );
-		void Reconnect ();
-		void Close ();		
-		int Run ();				
-		int Process (Event& e);
-		static int NetEventCallback ( Event& e, void* this_ptr );	
+#define BUF_SIZE 1400
+#define PKT_SIZE 1200 
 
-		// demo app protocol
-		void RequestWords ( int num );		
+typedef struct pkt_struct {
+	int seq_nr;
+	char buf[ BUF_SIZE ];
+} pkt_struct; 
 
-		int			mHasConnected;
+class NDClient : public NetworkSystem {
+public:		
+	NDClient( const char* trace_file_name = NULL ) : NetworkSystem( trace_file_name ) { }
 
-	private:
-		int			mSock;					// this is my socket (local) to access the server
-		int			mSeq;
-		std::string mSrvAddr;
-		
-		TimeX		m_currtime;
-		TimeX		m_lasttime;
+	void Start ( str srv_addr );
+	void Reconnect ( );
+	void Close ( );		
+	int Run ( );				
+	int Process ( Event& e );
+	static int NetEventCallback ( Event& e, void* this_ptr );			
 
-	};
+	int m_hasConnected;
+
+private:
+	void SendPacket ( );
+	double GetUpTime ( );
+	
+	TimeX m_startTime;
+	int m_sock;
+	int m_seqNr;
+	int m_pktSize;
+	int m_pktLimit;
+	pkt_struct m_txPkt;
+	str mSrvAddr;
+	TimeX m_currtime;
+	TimeX m_lasttime;
+	FILE* m_flowTrace;
+};
 
 #endif

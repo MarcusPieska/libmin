@@ -7,6 +7,7 @@
   #include <stdio.h>
   #include <sys/ioctl.h>
   #include <termios.h>
+  #include <sys/stat.h>
   
   int _kbhit () {
     static const int STDIN = 0;
@@ -33,22 +34,67 @@
 
 #include "netdemo_client.h"
 
- #define ENABLE_SSL
+#define ENABLE_SSL
 
+FILE* setup_trace ( const char* trace_name ) {
+  FILE* trace_ptr;
+  trace_ptr = fopen (trace_name, "w");
+  chmod (trace_name, S_IRWXO);
+  return trace_ptr;
+}
+
+int init_buf ( char* buf, const int size ) {
+  for ( int i = 0, c = 65; i < size; i++ ) {
+    if ( i == size - 1 ) {
+      memset ( buf + i, '*', 1 );
+      memset ( buf + i + 1, '\0', 1 );
+    }
+    else if ( i % 50 == 49 ) {
+      memset ( buf + i, '\n', 1 );
+      c++;
+    }
+    else if ( i % 10 == 9 ) {
+      memset ( buf + i, c, 1 );
+    }
+    else {
+      memset ( buf + i, '-', 1 );
+    }
+  }
+  printf ( "*** Packet content:\n\n%s\n*** Size is %luB \n", buf, strlen ( buf ) );
+  return (int)strlen ( buf );
+}
+
+double get_time ( void ) {
+  struct timespec t;
+  clock_gettime ( CLOCK_REALTIME, &t );
+  return t.tv_sec + t.tv_nsec / 1.0e9 - 0;
+}
 
 int NDClient::NetEventCallback (Event& e, void* this_pointer) {
     NDClient* self = static_cast<NDClient*>(this_pointer);
     return self->Process ( e );
 }
 
-void NDClient::Start (std::string srv_addr)
+double NDClient::GetUpTime ( ) 
+{
+	TimeX current_time;
+	current_time.SetTimeNSec ( );
+	return current_time.GetElapsedSec ( m_startTime );
+}
+
+void NDClient::Start ( str srv_addr )
 {
 	mSrvAddr = srv_addr;
 	bool bDebug = false;
 	bool bVerbose = true;
+	m_startTime.SetTimeNSec ( );
+	m_flowTrace = setup_trace ( "../tcp-app-tx-flow" );
+	m_pktSize = init_buf ( m_txPkt.buf, PKT_SIZE ) + sizeof ( int );
+	m_txPkt.seq_nr = 1;
+	m_pktLimit = 50000;
 
-	std::cout << netSetSecurityLevel ( 1 ) << std::endl;
-	std::cout << netAllowFallbackToPlainTCP ( false ) << std::endl;
+	std::cout << netSetSecurityLevel ( 0 ) << std::endl;
+	std::cout << netAllowFallbackToPlainTCP ( true ) << std::endl;
 	std::cout << netSetReconnectLimit ( 10 ) << std::endl;
 	std::cout << netSetReconnectInterval ( 500 ) << std::endl;
 	std::cout << netSetPathToPublicKey ( "/home/w/Downloads/libmin/src/assets/server-client.pem" ) << std::endl;
@@ -56,14 +102,12 @@ void NDClient::Start (std::string srv_addr)
 	// start timer
 	m_currtime.SetTimeNSec();	
 	m_lasttime = m_currtime;
-	mSeq = 0;
-	srand ( m_currtime.GetMSec() );
+	srand ( m_currtime.GetMSec ( ) );
 
 	// start networking
 	netInitialize();
 	netVerbose( bVerbose );
-	netDebug( bDebug );	
-
+	
 	// start client on random port
 	int cli_port = 10000 + rand() % 9000;
 	netClientStart ( cli_port, srv_addr );
@@ -72,7 +116,7 @@ void NDClient::Start (std::string srv_addr)
 	dbgprintf ( "Client IP: %s\n", getIPStr ( getHostIP() ).c_str() );	
 
 	// not yet connected (see Run func)
-	mSock = NET_NOT_CONNECTED; 
+	m_sock = NET_NOT_CONNECTED; 
 }
 
 void NDClient::Reconnect ()
@@ -83,16 +127,14 @@ void NDClient::Reconnect ()
     
     
 	dbgprintf ( "Connecting..\n" );	
-	mSock = netClientConnectToServer ( mSrvAddr, serverPort, false );	
+	m_sock = netClientConnectToServer ( mSrvAddr, serverPort, false );	
 
 	std::cout << "=========================================" << std::endl;
-
-	netPrint (true);
 }
 
 void NDClient::Close ()
 {
-	netCloseConnection ( mSock );
+	netCloseConnection ( m_sock );
 }
 
 int NDClient::Process ( Event& e )
@@ -150,14 +192,12 @@ int NDClient::Run ()
 	float elapsed_sec = m_currtime.GetElapsedSec ( m_lasttime );
 	if ( elapsed_sec >= 0.5 ) {
 		m_lasttime = m_currtime;
-		if ( netIsConnectComplete ( mSock ) ) {	
-			mHasConnected = true;		
-			int rnum = rand ( ) % 10000;
-			RequestWords ( rnum );
-			dbgprintf ( "  Requested words for: %d\n", rnum ); // If connected, make request
-		} else if ( ! mHasConnected ) {
+		if ( netIsConnectComplete ( m_sock ) ) {	
+			m_hasConnected = true;		
+			SendPacket ( );
+		} else if ( ! m_hasConnected ) {
 			Reconnect ( ); // If disconnected, try and reconnect
-			mHasConnected = true;	
+			m_hasConnected = true;	
 		}
 	}
 
@@ -166,58 +206,46 @@ int NDClient::Run ()
 }
 
 
-void NDClient::RequestWords (int num)
+void NDClient::SendPacket ( )
 {	
-	// demo application protocol:
-	//
-	// cRqs - request the words for a number (c=msg from client)
-	// sRst - here is the result containing the words (s=msg from server)
-
-	// create cRqs app event
-	int srv_sock = getServerSock ( mSock );
-	if ( srv_sock != -1) {
-		Event e = new_event ( 120, 'app ', 'cRqs', 0, getNetPool ( ) );	
-		e.attachInt ( srv_sock );  // must always tell server which socket 
-		e.attachInt ( mSeq++ ); 
-		e.attachStr ( "==========" );
-		e.attachInt ( num );		   // payload
-		e.attachStr ( "==========" );
-
-		netSend ( e );		// send to server
+	int srv_sock = getServerSock ( m_sock );
+	if ( srv_sock == -1 ) {
+		return;
+	}
+	
+	bool outcome = true;
+	while ( outcome && m_txPkt.seq_nr < m_pktLimit ) {
+		Event e = new_event ( m_pktSize, 'app ', 'cRqs', 0, getNetPool ( ) );	
+		e.attachBuf ( (char*)&m_txPkt, m_pktSize );
+		outcome = netSend ( e );
+		if ( outcome ) {
+			m_txPkt.seq_nr++;
+			fprintf ( m_flowTrace, "%.3f:%u:%u\n", GetUpTime ( ), m_txPkt.seq_nr, m_pktSize );
+			fflush ( m_flowTrace );
+		}
 	}
 }
 
-std::string get_addr(int argc, char **argv) 
+str get_addr( int argc, char **argv ) 
 {
-	std::string addr = "127.0.0.1";
-	for (int i = 1; i < argc - 1; ++i) {
-		std::string arg = argv[i];
-		if (arg == "--addr" || arg == "-a") {
-			addr = argv[++i]; 
+	str addr = "127.0.0.1";
+	for ( int i = 1; i < argc - 1; ++i ) {
+		str arg = argv[ i ];
+		if ( arg == "--addr" || arg == "-a" ) {
+			addr = argv[ ++i ]; 
 		} 
 	}
 	return addr;
 }
 
-int main (int argc, char* argv[])
+int main ( int argc, char* argv[] )
 {
-	//----- network performance profiling	
-	// - libmin must be built with PROFILE_NET and USE_NVTX
-	// - for CPU netRecv will show >1/ms due to perf printfs, use nvtx markers for better analysis
-	// - for NVTX the nvToolsExt64_1.dll must be present
-	// - enable this line to see profiling:
-	// PERF_INIT ( 64, true, true, true, 0, "" );	
-
-	NDClient cli;
-
-	cli.Start (get_addr(argc, argv));
-	cli.mHasConnected = false;
-	while ( !_kbhit() ) {		
-
-		cli.Run ();
+	NDClient cli ( "../trace-func-call-client" );
+	cli.Start ( get_addr ( argc, argv ) );
+	cli.m_hasConnected = false;
+	while ( !_kbhit ( ) ) {		
+		cli.Run ( );
 	}
-
-	cli.Close ();  
- 
+	cli.Close ( );  
     return 1;
 }
