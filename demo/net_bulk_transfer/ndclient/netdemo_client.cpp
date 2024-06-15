@@ -26,10 +26,6 @@
   }
 #endif
 
-//#include <openssl/err.h>
-//#include <openssl/md5.h>
-//#include <openssl/ssl.h>
-//#include <openssl/x509v3.h>
 #include <mutex>
 
 #include "netdemo_client.h"
@@ -64,14 +60,8 @@ int init_buf ( char* buf, const int size ) {
   return (int)strlen ( buf );
 }
 
-double get_time ( void ) {
-  struct timespec t;
-  clock_gettime ( CLOCK_REALTIME, &t );
-  return t.tv_sec + t.tv_nsec / 1.0e9 - 0;
-}
-
-int NDClient::NetEventCallback (Event& e, void* this_pointer) {
-    NDClient* self = static_cast<NDClient*>(this_pointer);
+int NDClient::NetEventCallback ( Event& e, void* this_pointer ) {
+    NDClient* self = static_cast<NDClient*>( this_pointer );
     return self->Process ( e );
 }
 
@@ -91,7 +81,7 @@ void NDClient::Start ( str srv_addr )
 	m_flowTrace = setup_trace ( "../tcp-app-tx-flow" );
 	m_pktSize = init_buf ( m_txPkt.buf, PKT_SIZE ) + sizeof ( int );
 	m_txPkt.seq_nr = 1;
-	m_pktLimit = 50000;
+	m_pktLimit = 200;
 
 	std::cout << netSetSecurityLevel ( 0 ) << std::endl;
 	std::cout << netAllowFallbackToPlainTCP ( true ) << std::endl;
@@ -100,16 +90,16 @@ void NDClient::Start ( str srv_addr )
 	std::cout << netSetPathToPublicKey ( "/home/w/Downloads/libmin/src/assets/server-client.pem" ) << std::endl;
 
 	// start timer
-	m_currtime.SetTimeNSec();	
+	m_currtime.SetTimeNSec ( );	
 	m_lasttime = m_currtime;
 	srand ( m_currtime.GetMSec ( ) );
 
 	// start networking
-	netInitialize();
+	netInitialize ( );
 	netVerbose( bVerbose );
 	
 	// start client on random port
-	int cli_port = 10000 + rand() % 9000;
+	int cli_port = 10000 + rand ( ) % 9000;
 	netClientStart ( cli_port, srv_addr );
 	netSetUserCallback ( &NetEventCallback );
 	
@@ -205,14 +195,12 @@ int NDClient::Run ()
 	return netProcessQueue ();
 }
 
-
 void NDClient::SendPacket ( )
 {	
 	int srv_sock = getServerSock ( m_sock );
 	if ( srv_sock == -1 ) {
 		return;
 	}
-	
 	bool outcome = true;
 	while ( outcome && m_txPkt.seq_nr < m_pktLimit ) {
 		Event e = new_event ( m_pktSize, 'app ', 'cRqs', 0, getNetPool ( ) );	
