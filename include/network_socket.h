@@ -124,6 +124,7 @@
 		int 				security; 			// indicates the security level; e.g., OpenSSL
 		int 				reconnectLimit; 	// limits the number of reconnection attempts 
 		int 				reconnectBudget; 	// remaining allowed reconnect attempts
+		TimeX 				lastStateChange;    // for tracking when timeouts should occur
 		
 		std::string srvAddr;
 		int srvPort;

@@ -81,7 +81,7 @@ void NDClient::Start ( str srv_addr )
 	m_flowTrace = setup_trace ( "../tcp-app-tx-flow" );
 	m_pktSize = init_buf ( m_txPkt.buf, PKT_SIZE ) + sizeof ( int );
 	m_txPkt.seq_nr = 1;
-	m_pktLimit = 200;
+	m_pktLimit = 1000;
 
 	std::cout << netSetSecurityLevel ( 0 ) << std::endl;
 	std::cout << netAllowFallbackToPlainTCP ( true ) << std::endl;
@@ -202,8 +202,9 @@ void NDClient::SendPacket ( )
 		return;
 	}
 	bool outcome = true;
-	while ( outcome && m_txPkt.seq_nr < m_pktLimit ) {
-		Event e = new_event ( m_pktSize, 'app ', 'cRqs', 0, getNetPool ( ) );	
+	if ( outcome && m_txPkt.seq_nr < m_pktLimit ) {
+		Event e = new_event ( m_pktSize + sizeof(int), 'app ', 'cRqs', 0, getNetPool ( ) );	
+		e.attachInt ( srv_sock ); // Must always tell server which socket 
 		e.attachBuf ( (char*)&m_txPkt, m_pktSize );
 		outcome = netSend ( e );
 		if ( outcome ) {

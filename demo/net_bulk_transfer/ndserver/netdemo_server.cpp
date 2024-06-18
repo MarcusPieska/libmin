@@ -77,8 +77,8 @@ void NDServer::Start ()
 	m_pktSize = init_buf ( m_refPkt.buf, PKT_SIZE ) + sizeof ( int );
 	m_refPkt.seq_nr = 1;
 
-	std::cout << netSetSecurityLevel ( 0 ) << std::endl;
-	std::cout << netAllowFallbackToPlainTCP ( true ) << std::endl;
+	std::cout << netSetSecurityLevel ( 1 ) << std::endl;
+	std::cout << netAllowFallbackToPlainTCP ( false ) << std::endl;
 	std::cout << netSetReconnectLimit ( 10 ) << std::endl;
 	std::cout << netSetPathToPublicKey ( "/home/w/Downloads/libmin/src/assets/server-server.pem" ) << std::endl;
 	std::cout << netSetPathToPrivateKey ( "/home/w/Downloads/libmin/src/assets/server.key" ) << std::endl;
@@ -91,7 +91,7 @@ void NDServer::Start ()
 	
 	// start server listening
 	int srv_port = 16101;
-	netServerStart ( srv_port + 0, 0 );
+	netServerStart ( srv_port + 0, 1 );
 	// netServerStart ( srv_port + 1, 0 );
 	netSetUserCallback ( &NetEventCallback );
 	
@@ -140,6 +140,7 @@ int NDServer::Process ( Event& e )
 
 	switch ( e.getName ( ) ) { // Process Application events
 	case 'cRqs': 
+		int sock = e.getInt (); // Which client?
 		e.getBuf ( (char*)&m_rxPkt, m_pktSize );
 		int outcome = memcmp ( &m_refPkt, &m_rxPkt, m_pktSize );
 		m_refPkt.seq_nr++;
@@ -148,7 +149,7 @@ int NDServer::Process ( Event& e )
 		if ( outcome != 0 ) {
 			std::cout << m_rxPkt.buf << std::endl;
 		}
-		dbgprintf ( "Received packet: SEQ-%d \n", m_rxPkt.seq_nr );
+		dbgprintf ( "Received packet: SEQ-%d: sock:%d \n", m_rxPkt.seq_nr, sock );
 		return 1;
 		break;
 	};

@@ -548,6 +548,7 @@ void NetworkSystem::netServerSetupHandshakeSSL ( int sock_i )
 	make_sock_non_block ( s.socket ); 
 	s.security = NET_SECURITY_FAIL; // Assume failure until end of this function
 	s.state = STATE_FAILED; 
+	s.lastStateChange.SetTimeNSec ( );
 
 	if ( ( s.ctx = SSL_CTX_new ( TLS_server_method ( ) ) ) == 0 ) {
 		netPrintf ( PRINT_ERROR, "Failed at new ssl ctx" );
@@ -619,6 +620,7 @@ void NetworkSystem::netServerSetupHandshakeSSL ( int sock_i )
 	
 	s.security = NET_SECURITY_OPENSSL;
 	s.state = STATE_SSL_HANDSHAKE;
+	s.lastStateChange.SetTimeNSec ( );
 	TRACE_EXIT ( (__func__) );
 }
 	      
@@ -647,6 +649,7 @@ void NetworkSystem::netServerAcceptSSL ( int sock_i )
 		netPrintf ( PRINT_VERBOSE, "Call to ssl accept succeded" );
 		netPrintf ( PRINT_VERBOSE, "Ready for safe transfer: %d", SSL_is_init_finished ( s.ssl ) );
 		s.state = STATE_CONNECTED;
+		s.lastStateChange.SetTimeNSec ( );
 	}
 	if ( s.security == NET_SECURITY_FAIL ) {
 		netManageHandshakeError ( sock_i );
@@ -719,6 +722,7 @@ void NetworkSystem::netServerAcceptClient ( int sock_i )
 	s.dest.ipL = cli_ip; // Assign client IP
 	s.dest.port = cli_port;	// Assign client port
 	s.state = STATE_START;
+	s.lastStateChange.SetTimeNSec ( );
 
 	if ( s.security == NET_SECURITY_PLAIN_TCP ) { // Complete TCP or SSL connection
 		netServerCompleteConnection ( cli_sock_i );
@@ -742,6 +746,7 @@ void NetworkSystem::netServerCompleteConnection ( int sock_i )
 	netPort srv_port = m_socks[ srv_sock_svc ].src.port;
 	NetSock& s = m_socks [ sock_i ];
 	s.state = STATE_CONNECTED; 
+	s.lastStateChange.SetTimeNSec ( );
 
 	Event e; 
 	e = netMakeEvent ( 'sOkT', 0 );
@@ -762,6 +767,20 @@ void NetworkSystem::netServerCompleteConnection ( int sock_i )
 	netList ( );
 	TRACE_EXIT ( (__func__) );
 }
+
+void NetworkSystem::netServerCheckConnectionHandshakes ( ) {
+	for ( int sock_i = 0; sock_i < (int) m_socks.size ( ); sock_i++ ) { 
+		NetSock& s = m_socks[ sock_i ];
+		if ( s.state == STATE_SSL_HANDSHAKE ) {
+			TimeX current_time;
+			current_time.SetTimeNSec ( );
+			if (  current_time.GetElapsedSec ( s.lastStateChange ) > 5.0 ) {
+				netManageHandshakeError ( sock_i );
+			}
+		}
+	}
+}
+
 
 void NetworkSystem::netServerProcessIO ( )
 {
@@ -809,6 +828,7 @@ void NetworkSystem::netClientSetupHandshakeSSL ( int sock_i )
 	make_sock_non_block ( s.socket ); 
 	s.security = NET_SECURITY_FAIL; // Assume failure until end of this function
 	s.state = STATE_FAILED; 
+	s.lastStateChange.SetTimeNSec ( );
 	
 	#if OPENSSL_VERSION_NUMBER < 0x10100000L // Version 1.1
 		SSL_load_error_strings();	 
@@ -868,6 +888,7 @@ void NetworkSystem::netClientSetupHandshakeSSL ( int sock_i )
 
 	s.security = NET_SECURITY_OPENSSL;
 	s.state = STATE_SSL_HANDSHAKE;
+	s.lastStateChange.SetTimeNSec ( );
 	TRACE_EXIT ( (__func__) );
 }	
 
@@ -897,6 +918,7 @@ void NetworkSystem::netClientConnectSSL ( int sock_i )
 		netPrintf ( PRINT_VERBOSE, "Call to ssl connect succeded" );
 		netPrintf ( PRINT_VERBOSE, "Ready for safe transfer: %d", SSL_is_init_finished ( s.ssl ) );
 		s.state = STATE_CONNECTED;
+		s.lastStateChange.SetTimeNSec ( );
 	}
 	if ( s.security == NET_SECURITY_FAIL ) {
 		netManageHandshakeError ( sock_i );
@@ -1144,6 +1166,7 @@ void NetworkSystem::netProcessEvents ( Event& e )
 
 			// Update client socket with server socket & client port
 			m_socks[ cli_sock ].state = STATE_CONNECTED; // mark connected
+			m_socks[ cli_sock ].lastStateChange.SetTimeNSec ( );
 			m_socks[ cli_sock ].dest.sock = srv_sock; // assign server socket
 			m_socks[ cli_sock ].src.port = cli_port; // assign client port from server
 
@@ -1193,6 +1216,7 @@ int NetworkSystem::netAddSocket ( int side, int mode, int state, bool block, Net
 	s.side = side;
 	s.mode = mode;
 	s.state = state;
+	s.lastStateChange.SetTimeNSec ( );
 	s.src = src;
 	s.dest = dest;
 	s.socket = 0;
@@ -1225,6 +1249,7 @@ int NetworkSystem::netManageHandshakeError ( int sock_i )
 		s.srvPort += 1;
 		s.dest.port += 1;
 		s.state = STATE_START;
+		s.lastStateChange.SetTimeNSec ( );
 		if ( s.ctx != 0 ) {
 			netFreeSSL ( sock_i ); 
 			netPrintf ( PRINT_VERBOSE, "Call to free old context made (2)" );
@@ -1248,6 +1273,7 @@ int NetworkSystem::netManageFatalError ( int sock_i, int force )
 	int outcome = 0;
 	if ( m_hostType == 'c' && s.reconnectBudget > 0 ) {
 		s.state = STATE_START;
+		s.lastStateChange.SetTimeNSec ( );
 		if ( s.ctx != 0 ) {
 			netFreeSSL ( sock_i ); 
 			netPrintf ( PRINT_VERBOSE, "Call to free old context made (3)" );
@@ -1282,6 +1308,7 @@ int NetworkSystem::netDeleteSocket ( int sock_i, int force )
 	}
 	CXSocketClose ( s.socket );
 	s.state = STATE_TERMINATED;
+	s.lastStateChange.SetTimeNSec ( );
 	
 	// remove sockets at end of list
 	// --- FOR NOW, THIS IS NECESSARY ON CLIENT (which may have only 1 socket),
@@ -1351,6 +1378,7 @@ int NetworkSystem::netProcessQueue ( void )
 			netClientCheckConnectionHandshakes ( );
 			netClientProcessIO ( );
 		} else {
+			netServerCheckConnectionHandshakes ( );
 			netServerProcessIO ( );
 		}
 	}

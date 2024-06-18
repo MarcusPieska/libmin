@@ -122,6 +122,7 @@ public:
 	// Server API
 	void netServerStart ( netPort srv_port, int security = NET_SECURITY_UNDEF );
 	void netServerAcceptClient ( int sock_i );
+	void netServerCheckConnectionHandshakes ( );
 	void netServerProcessIO ( );
 	void netServerCompleteConnection ( int sock_i );
 
