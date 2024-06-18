@@ -398,7 +398,6 @@ NetworkSystem::NetworkSystem ( const char* trace_file_name )
 	m_lastClientConnectCheck.SetTimeNSec ( );
 
 	m_security = NET_SECURITY_PLAIN_TCP;
-	m_tcpFallbackAllowed = true;
 	m_pathPublicKey = str("");
 	m_pathPrivateKey = str("");
 	m_pathCertDir = str("");
@@ -546,7 +545,7 @@ void NetworkSystem::netServerSetupHandshakeSSL ( int sock_i )
 	make_sock_no_delay ( s.socket );
 	int ret = 0, exp;
 	make_sock_non_block ( s.socket ); 
-	s.security = NET_SECURITY_FAIL; // Assume failure until end of this function
+	s.security |= NET_SECURITY_FAIL; 
 	s.state = STATE_FAILED; 
 	s.lastStateChange.SetTimeNSec ( );
 
@@ -592,6 +591,7 @@ void NetworkSystem::netServerSetupHandshakeSSL ( int sock_i )
 	if ( ( ret = SSL_CTX_use_certificate_file ( s.ctx, m_pathPublicKey.c_str ( ), SSL_FILETYPE_PEM ) ) <= 0 ) {
 		netPrintf ( PRINT_ERROR, "Use certificate failed on public key: %s", m_pathPublicKey.c_str ( ) );	
 		netFreeSSL ( sock_i ); 
+		s.lastStateChange.SetTimeNSec ( );
 		TRACE_EXIT ( (__func__) );	
 		return;
 	} else {
@@ -618,7 +618,7 @@ void NetworkSystem::netServerSetupHandshakeSSL ( int sock_i )
 		netPrintf ( PRINT_VERBOSE, "Call to set ssl fd succeded" );
 	}
 	
-	s.security = NET_SECURITY_OPENSSL;
+	s.security &= ~NET_SECURITY_FAIL;
 	s.state = STATE_SSL_HANDSHAKE;
 	s.lastStateChange.SetTimeNSec ( );
 	TRACE_EXIT ( (__func__) );
@@ -638,20 +638,20 @@ void NetworkSystem::netServerAcceptSSL ( int sock_i )
 			str msg = netGetGetErrorStringSSL ( ret, s.ssl );
 			netPrintf ( PRINT_ERROR, "SSL_accept failed (1): Return: %d: %s", ret, msg.c_str ( ) );
 			netFreeSSL ( sock_i ); 
-			s.security = NET_SECURITY_FAIL;
+			s.security |= NET_SECURITY_FAIL;
 		}
 	} else if ( ret == 0 ) {
 		str msg = netGetGetErrorStringSSL ( ret, s.ssl );
 		netPrintf ( PRINT_VERBOSE, "Call to ssl accept failed (2): Return: %d: %s", ret, msg.c_str ( ) );
 		netFreeSSL ( sock_i );
-		s.security = NET_SECURITY_FAIL;
+		s.security |= NET_SECURITY_FAIL;
 	} else {
 		netPrintf ( PRINT_VERBOSE, "Call to ssl accept succeded" );
 		netPrintf ( PRINT_VERBOSE, "Ready for safe transfer: %d", SSL_is_init_finished ( s.ssl ) );
 		s.state = STATE_CONNECTED;
 		s.lastStateChange.SetTimeNSec ( );
 	}
-	if ( s.security == NET_SECURITY_FAIL ) {
+	if ( s.security & NET_SECURITY_FAIL ) {
 		netManageHandshakeError ( sock_i );
 	} else if ( s.state == STATE_CONNECTED ) {
 		netServerCompleteConnection ( sock_i );
@@ -724,14 +724,16 @@ void NetworkSystem::netServerAcceptClient ( int sock_i )
 	s.state = STATE_START;
 	s.lastStateChange.SetTimeNSec ( );
 
-	if ( s.security == NET_SECURITY_PLAIN_TCP ) { // Complete TCP or SSL connection
-		netServerCompleteConnection ( cli_sock_i );
-	}
-	else if ( s.security == NET_SECURITY_OPENSSL ) {
+	std::cout << "5 -----------> " << m_socks[ sock_i ].security << std::endl;
+	std::cout << "5 -----------> " << s.security << std::endl;
+	if ( s.security & NET_SECURITY_OPENSSL ) {
 		netServerSetupHandshakeSSL ( cli_sock_i );
-		if ( s.security == NET_SECURITY_FAIL ) {
+		if ( s.security & NET_SECURITY_FAIL ) {
 			netManageHandshakeError ( sock_i );
 		}
+	}
+	else if ( s.security & NET_SECURITY_PLAIN_TCP ) { // Complete TCP or SSL connection
+		netServerCompleteConnection ( cli_sock_i );
 	}
 	TRACE_EXIT ( (__func__) ); 	
 } 
@@ -794,10 +796,10 @@ void NetworkSystem::netServerProcessIO ( )
 			if ( s.src.type == NTYPE_ANY ) { // Listen for TCP connections on socket
 				netServerAcceptClient ( sock_i );
 			} else {
-				if ( s.security == NET_SECURITY_PLAIN_TCP || s.state == STATE_CONNECTED ) {
-					netRecieveData ( sock_i );
-				} else {
+				if ( ( s.security & NET_SECURITY_OPENSSL ) && s.state < STATE_CONNECTED ) {
 					netServerAcceptSSL ( sock_i );
+				} else {
+					netRecieveData ( sock_i );
 				}
 			}
 		}
@@ -826,7 +828,7 @@ void NetworkSystem::netClientSetupHandshakeSSL ( int sock_i )
 	int ret = 0, exp;
 	make_sock_no_delay ( s.socket );
 	make_sock_non_block ( s.socket ); 
-	s.security = NET_SECURITY_FAIL; // Assume failure until end of this function
+	s.security |= NET_SECURITY_FAIL; // Assume failure until end of this function
 	s.state = STATE_FAILED; 
 	s.lastStateChange.SetTimeNSec ( );
 	
@@ -886,7 +888,7 @@ void NetworkSystem::netClientSetupHandshakeSSL ( int sock_i )
 		netPrintf ( PRINT_VERBOSE, "Call to ssl set fd succeded" );
 	}	
 
-	s.security = NET_SECURITY_OPENSSL;
+	s.security &= ~NET_SECURITY_FAIL;
 	s.state = STATE_SSL_HANDSHAKE;
 	s.lastStateChange.SetTimeNSec ( );
 	TRACE_EXIT ( (__func__) );
@@ -907,20 +909,20 @@ void NetworkSystem::netClientConnectSSL ( int sock_i )
 			str msg = netGetGetErrorStringSSL ( ret, s.ssl );
 			netPrintf ( PRINT_ERROR, "Call to ssl connect failed (1): Return: %d: %s", ret, msg.c_str ( ) );
 			netFreeSSL ( sock_i ); 
-			s.security = NET_SECURITY_FAIL;	
+			s.security |= NET_SECURITY_FAIL;	
 		}
 	} else if ( ret == 0 ) {
 		str msg = netGetGetErrorStringSSL ( ret, s.ssl );
 		netPrintf ( PRINT_ERROR, "Call to ssl connect failed (2): Return: %d: %s", ret, msg.c_str ( ) );
 		netFreeSSL ( sock_i ); 
-		s.security = NET_SECURITY_FAIL;	
+		s.security |= NET_SECURITY_FAIL;	
 	} else {
 		netPrintf ( PRINT_VERBOSE, "Call to ssl connect succeded" );
 		netPrintf ( PRINT_VERBOSE, "Ready for safe transfer: %d", SSL_is_init_finished ( s.ssl ) );
 		s.state = STATE_CONNECTED;
 		s.lastStateChange.SetTimeNSec ( );
 	}
-	if ( s.security == NET_SECURITY_FAIL ) {
+	if ( s.security & NET_SECURITY_FAIL ) {
 		netManageHandshakeError ( sock_i );
 	}
 	TRACE_EXIT ( (__func__) );
@@ -1022,9 +1024,9 @@ int NetworkSystem::netClientConnectToServer ( str srv_name, netPort srv_port, bo
 	} else {
 		s.reconnectBudget = s.reconnectLimit;
 	}
-	if ( s.security == NET_SECURITY_OPENSSL ) { // SSL handshake
+	if ( s.security & NET_SECURITY_OPENSSL ) { // SSL handshake
 		netClientSetupHandshakeSSL ( cli_sock_i );
-		if ( s.security == NET_SECURITY_FAIL ) {	
+		if ( s.security & NET_SECURITY_FAIL ) {	
 			netManageHandshakeError ( cli_sock_i );
 		}
 	}
@@ -1041,7 +1043,7 @@ void NetworkSystem::netClientCheckConnectionHandshakes ( )
 		m_lastClientConnectCheck.SetTimeNSec ( );
 		for ( int sock_i = 1; sock_i < (int) m_socks.size ( ); sock_i++ ) {
 			NetSock& s = m_socks[ sock_i ];
-			if ( s.security == NET_SECURITY_OPENSSL && s.state == STATE_SSL_HANDSHAKE ) {
+			if ( s.security & NET_SECURITY_OPENSSL && s.state == STATE_SSL_HANDSHAKE ) {
 				netClientConnectSSL ( sock_i ); // This call is MORE important than the other
 			}
 			else if ( ( s.state != STATE_CONNECTED ) && s.reconnectBudget > 0 ) {	
@@ -1062,9 +1064,9 @@ void NetworkSystem::netClientProcessIO ( )
 	for ( int sock_i = 0; sock_i < (int) m_socks.size ( ); sock_i++ ) { 
 		if ( netSocketSetForRead ( &sockSet, sock_i ) ) {
 			NetSock& s = m_socks[ sock_i ];
-			if ( s.security == NET_SECURITY_PLAIN_TCP || s.state == STATE_CONNECTED ) {
+			if ( s.security == NET_SECURITY_PLAIN_TCP ) {
 				netRecieveData ( sock_i );
-			} else if ( s.security == NET_SECURITY_OPENSSL && s.state == STATE_SSL_HANDSHAKE ) {
+			} else if ( s.security & NET_SECURITY_OPENSSL && s.state == STATE_SSL_HANDSHAKE ) {
 				netClientConnectSSL ( sock_i ); // This call is LESS important than the other
 			}
 		}
@@ -1225,8 +1227,7 @@ int NetworkSystem::netAddSocket ( int side, int mode, int state, bool block, Net
 	s.blocking = block;
 	s.broadcast = 1;
 	s.security = m_security; 
-	s.reconnectBudget = s.reconnectLimit = m_reconnectLimit; 
-	s.tcpFallback = m_tcpFallbackAllowed; 
+	s.reconnectBudget = s.reconnectLimit = m_reconnectLimit;  
 
 	s.ctx = 0;
 	s.ssl = 0;
@@ -1244,7 +1245,8 @@ int NetworkSystem::netManageHandshakeError ( int sock_i )
 	TRACE_ENTER ( (__func__) );
 	NetSock& s = m_socks[ sock_i ];
 	int outcome = 0;
-	if ( s.tcpFallback ) {
+	bool fallback_allowed = ( s.security & NET_SECURITY_OPENSSL ) && ( s.security & NET_SECURITY_PLAIN_TCP );
+	if ( fallback_allowed && s.side == NET_CLI ) {
 		s.security = NET_SECURITY_PLAIN_TCP;
 		s.srvPort += 1;
 		s.dest.port += 1;
@@ -1640,7 +1642,7 @@ bool NetworkSystem::netSendLiteral ( str str_lit, int sock_i )
 	
 	NetSock& s = m_socks[ sock_i ]; // Send over socket
 	if ( s.mode == NET_TCP ) {
-		if ( s.state < STATE_SSL_HANDSHAKE || s.security == NET_SECURITY_PLAIN_TCP ) {
+		if ( s.security == NET_SECURITY_PLAIN_TCP || s.state < STATE_SSL_HANDSHAKE ) {
 			result = send ( s.socket, buf, len, 0 ); // TCP/IP
 		} else {
 			#ifdef BUILD_OPENSSL
@@ -1895,7 +1897,7 @@ int NetworkSystem::netSocketSelectRead ( fd_set* sockSet )
 	for ( int n = 0; n < (int) m_socks.size ( ); n++ ) { // Get all sockets that are Enabled or Connected
 		NetSock& s = m_socks[ n ];
 		if ( s.state != STATE_NONE && s.state != STATE_TERMINATED ) { // look for STATE_START or NTYPE_CONNECT
-			if ( s.state < STATE_SSL_HANDSHAKE || s.security == NET_SECURITY_PLAIN_TCP ) { 
+			if ( s.security == NET_SECURITY_PLAIN_TCP || s.state < STATE_SSL_HANDSHAKE ) { 
 				FD_SET ( s.socket, sockSet );
 				if ( (int) s.socket > maxfd ) maxfd = s.socket;
 			} else { 
@@ -2022,85 +2024,28 @@ bool NetworkSystem::netSetReconnectLimit ( int limit, int sock_i )
 
 //----------------------------------------------------------------------------------------------------------------------
 
-bool NetworkSystem::netSetSecurityLevel ( int level )
+bool NetworkSystem::netSetSecurityLevel ( int levels )
 {
-	if ( level == NET_SECURITY_PLAIN_TCP ) {
-		return netSetSecurityToPlainTCP ( );
+	m_security = 0;
+	if ( levels & NET_SECURITY_PLAIN_TCP ) {
+		m_security |= NET_SECURITY_PLAIN_TCP;
 	}
-	if ( level == NET_SECURITY_OPENSSL ) {
-		return netSetSecurityToOpenSSL ( );
+	if ( levels & NET_SECURITY_OPENSSL ) {
+		m_security |= NET_SECURITY_OPENSSL;
 	}
-	return false;
+	return ( m_security | levels ) == m_security;
 }
 
-bool NetworkSystem::netSetSecurityLevel ( int level, int sock_i )
+bool NetworkSystem::netSetSecurityLevel ( int levels, int sock_i )
 {
-	if ( level == NET_SECURITY_PLAIN_TCP ) {
-		return netSetSecurityToPlainTCP ( sock_i );
+	m_security = 0;
+	if ( levels & NET_SECURITY_PLAIN_TCP ) {
+		m_socks[ sock_i ].security |= NET_SECURITY_PLAIN_TCP;
 	}
-	if ( level == NET_SECURITY_OPENSSL ) {
-		return netSetSecurityToOpenSSL ( sock_i );
+	if ( levels & NET_SECURITY_OPENSSL == NET_SECURITY_OPENSSL ) {
+		m_socks[ sock_i ].security |= NET_SECURITY_OPENSSL; 
 	}
-	return false;
-}
-
-//----------------------------------------------------------------------------------------------------------------------
-
-bool NetworkSystem::netSetSecurityToPlainTCP ( )
-{
-	m_security = NET_SECURITY_PLAIN_TCP;
-	return true;
-}
-
-bool NetworkSystem::netSetSecurityToPlainTCP ( int sock_i )
-{
-	if ( invalid_socket_index ( sock_i ) ) {
-		return false;
-	}
-	m_socks[ sock_i ].security = NET_SECURITY_PLAIN_TCP;
-	return true;
-}
-
-//----------------------------------------------------------------------------------------------------------------------
-
-bool NetworkSystem::netSetSecurityToOpenSSL ( )
-{
-	#ifdef BUILD_OPENSSL
-		m_security = NET_SECURITY_OPENSSL;
-		return true;
-	#else
-		return false;
-	#endif
-}
-
-bool NetworkSystem::netSetSecurityToOpenSSL ( int sock_i )
-{
-	if ( invalid_socket_index ( sock_i ) ) {
-		return false;
-	}
-	#ifdef BUILD_OPENSSL
-		m_socks[ sock_i ].security = NET_SECURITY_PLAIN_TCP;
-		return true;
-	#else
-		return false;
-	#endif
-}
-
-//----------------------------------------------------------------------------------------------------------------------
-
-bool NetworkSystem::netAllowFallbackToPlainTCP ( bool allow )
-{
-	m_tcpFallbackAllowed = allow;
-	return true;
-}
-
-bool NetworkSystem::netAllowFallbackToPlainTCP ( bool allow, int sock_i )
-{
-	if ( invalid_socket_index ( sock_i ) ) {
-		return false;
-	}
-	m_socks[ sock_i ].tcpFallback = allow;
-	return true;
+	return ( m_socks[ sock_i ].security | levels ) == m_security;
 }
 
 //----------------------------------------------------------------------------------------------------------------------

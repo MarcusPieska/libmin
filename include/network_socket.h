@@ -57,11 +57,11 @@
 	#define NET_TCP						0 // modes
 	#define NET_UDP						1	
 	
-	#define NET_SECURITY_UNDEF			-2 // security types
-	#define NET_SECURITY_FAIL			-1 
-	#define NET_SECURITY_PLAIN_TCP		0
-	#define NET_SECURITY_OPENSSL		1
-	#define NET_SECURITY_DTLS			2
+	#define NET_SECURITY_UNDEF			0 // security types
+	#define NET_SECURITY_FAIL			1 
+	#define NET_SECURITY_PLAIN_TCP		2
+	#define NET_SECURITY_OPENSSL		4
+	#define NET_SECURITY_DTLS			8
 	
 	#define NTYPE_ANY					0 // types
 	#define NTYPE_BROADCAST				1		
@@ -120,7 +120,6 @@
 		SOCKET				socket;				// hard socket
 		bool				blocking;			// is blocking
 		bool				broadcast;			// is broadcast
-		bool				tcpFallback;		// allow plain TCP if OpenSSL fails
 		int 				security; 			// indicates the security level; e.g., OpenSSL
 		int 				reconnectLimit; 	// limits the number of reconnection attempts 
 		int 				reconnectBudget; 	// remaining allowed reconnect attempts

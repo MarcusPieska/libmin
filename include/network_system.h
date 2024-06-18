@@ -106,14 +106,8 @@ public:
 	bool netSetReconnectInterval ( int time_ms ); 
 	bool netSetReconnectLimit ( int limit );
 	bool netSetReconnectLimit ( int limit, int sock_i );
-	bool netSetSecurityLevel ( int level );
-	bool netSetSecurityLevel ( int level, int sock_i );
-	bool netSetSecurityToPlainTCP ( );
-	bool netSetSecurityToPlainTCP ( int sock_i );
-	bool netSetSecurityToOpenSSL ( );
-	bool netSetSecurityToOpenSSL ( int sock_i );
-	bool netAllowFallbackToPlainTCP ( bool allow );
-	bool netAllowFallbackToPlainTCP ( bool allow, int sock_i );
+	bool netSetSecurityLevel ( int levels );
+	bool netSetSecurityLevel ( int levels, int sock_i );
 	bool netSetPathToPublicKey ( str path );
 	bool netSetPathToPrivateKey ( str path );
 	bool netSetPathToCertDir ( str path );
@@ -271,7 +265,6 @@ private: // State
 	
 	// Security related
 	int m_security;
-	int m_tcpFallbackAllowed;
 	int m_reconnectInterval;
 	int m_reconnectLimit;
 	str m_pathPublicKey;

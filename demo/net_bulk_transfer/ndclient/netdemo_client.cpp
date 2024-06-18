@@ -83,8 +83,7 @@ void NDClient::Start ( str srv_addr )
 	m_txPkt.seq_nr = 1;
 	m_pktLimit = 1000;
 
-	std::cout << netSetSecurityLevel ( 0 ) << std::endl;
-	std::cout << netAllowFallbackToPlainTCP ( true ) << std::endl;
+	std::cout << netSetSecurityLevel ( NET_SECURITY_PLAIN_TCP | NET_SECURITY_OPENSSL ) << std::endl;
 	std::cout << netSetReconnectLimit ( 10 ) << std::endl;
 	std::cout << netSetReconnectInterval ( 500 ) << std::endl;
 	std::cout << netSetPathToPublicKey ( "/home/w/Downloads/libmin/src/assets/server-client.pem" ) << std::endl;
@@ -204,7 +203,6 @@ void NDClient::SendPacket ( )
 	bool outcome = true;
 	if ( outcome && m_txPkt.seq_nr < m_pktLimit ) {
 		Event e = new_event ( m_pktSize + sizeof(int), 'app ', 'cRqs', 0, getNetPool ( ) );	
-		e.attachInt ( srv_sock ); // Must always tell server which socket 
 		e.attachBuf ( (char*)&m_txPkt, m_pktSize );
 		outcome = netSend ( e );
 		if ( outcome ) {
