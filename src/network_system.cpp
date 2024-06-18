@@ -686,6 +686,11 @@ void NetworkSystem::netServerStart ( netPort srv_port, int security )
 	
 	netSocketBind ( srv_sock_i );
 	netSocketListen ( srv_sock_i );	
+	if ( security == NET_SECURITY_UNDEF ) {
+		if ( ( m_security > NET_SECURITY_PLAIN_TCP ) && ( m_security & NET_SECURITY_PLAIN_TCP ) ) {
+			netServerStart ( --srv_port, NET_SECURITY_PLAIN_TCP );
+		}
+	}
 	TRACE_EXIT ( (__func__) );
 }
 
@@ -1248,8 +1253,8 @@ int NetworkSystem::netManageHandshakeError ( int sock_i )
 	bool fallback_allowed = ( s.security & NET_SECURITY_OPENSSL ) && ( s.security & NET_SECURITY_PLAIN_TCP );
 	if ( fallback_allowed && s.side == NET_CLI ) {
 		s.security = NET_SECURITY_PLAIN_TCP;
-		s.srvPort += 1;
-		s.dest.port += 1;
+		s.srvPort -= 1;
+		s.dest.port -= 1;
 		s.state = STATE_START;
 		s.lastStateChange.SetTimeNSec ( );
 		if ( s.ctx != 0 ) {

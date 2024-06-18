@@ -90,8 +90,7 @@ void NDServer::Start ()
 	
 	// start server listening
 	int srv_port = 16101;
-	netServerStart ( srv_port + 0, NET_SECURITY_PLAIN_TCP | NET_SECURITY_OPENSSL );
-	netServerStart ( srv_port + 1, NET_SECURITY_PLAIN_TCP );
+	netServerStart ( srv_port );
 	netSetUserCallback ( &NetEventCallback );
 	
 	dbgprintf ( "Server IP: %s\n", getIPStr ( getHostIP() ).c_str() );	
