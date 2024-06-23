@@ -730,8 +730,6 @@ void NetworkSystem::netServerAcceptClient ( int sock_i )
 	s.state = STATE_START;
 	s.lastStateChange.SetTimeNSec ( );
 
-	std::cout << "5 -----------> " << m_socks[ sock_i ].security << std::endl;
-	std::cout << "5 -----------> " << s.security << std::endl;
 	if ( s.security & NET_SECURITY_OPENSSL ) {
 		netServerSetupHandshakeSSL ( cli_sock_i );
 		if ( s.security & NET_SECURITY_FAIL ) {
@@ -776,7 +774,8 @@ void NetworkSystem::netServerCompleteConnection ( int sock_i )
 	TRACE_EXIT ( (__func__) );
 }
 
-void NetworkSystem::netServerCheckConnectionHandshakes ( ) {
+void NetworkSystem::netServerCheckConnectionHandshakes ( ) 
+{
 	for ( int sock_i = 0; sock_i < (int) m_socks.size ( ); sock_i++ ) { 
 		NetSock& s = m_socks[ sock_i ];
 		if ( s.state == STATE_SSL_HANDSHAKE ) {
@@ -864,7 +863,8 @@ void NetworkSystem::netClientSetupHandshakeSSL ( int sock_i )
 	SSL_CTX_set_verify ( s.ctx, SSL_VERIFY_PEER, NULL );
 
 	if ( !SSL_CTX_load_verify_locations( s.ctx, m_pathPublicKey.c_str ( ), NULL ) ) {
-		sprintf ( msg, "Load verify failed on public key: %s\n", m_pathPublicKey.c_str() );
+		str msg = netGetGetErrorStringSSL ( ret, s.ssl );
+		netPrintf ( PRINT_ERROR_HS, "Load verify failed on public key: %s", msg.c_str ( ) );
 		netFreeSSL ( sock_i );
 		TRACE_EXIT ( (__func__) );
 		return;
@@ -1047,6 +1047,13 @@ void NetworkSystem::netClientCheckConnectionHandshakes ( )
 		m_lastClientConnectCheck.SetTimeNSec ( );
 		for ( int sock_i = 1; sock_i < (int) m_socks.size ( ); sock_i++ ) {
 			NetSock& s = m_socks[ sock_i ];
+			if ( s.state == STATE_SSL_HANDSHAKE ) {
+				TimeX current_time;
+				current_time.SetTimeNSec ( );
+				if ( current_time.GetElapsedSec ( s.lastStateChange ) > 5.0 ) {
+					netManageHandshakeError ( sock_i );
+				}
+			}
 			if ( s.security & NET_SECURITY_OPENSSL && s.state == STATE_SSL_HANDSHAKE ) {
 				netClientConnectSSL ( sock_i ); // This call is MORE important than the other
 			}
@@ -1266,7 +1273,7 @@ int NetworkSystem::netManageHandshakeError ( int sock_i )
 		netClientConnectToServer ( s.srvAddr, s.srvPort, false, sock_i );
 		
 	} else {
-		outcome = netDeleteSocket ( sock_i, 1 );
+		outcome = netDeleteSocket ( sock_i, 0 );
 	}
 	TRACE_EXIT ( (__func__) );
 	return outcome;
@@ -1881,10 +1888,13 @@ bool NetworkSystem::netSocketSetForRead ( fd_set* sockSet, int sock_i )
 		return FD_ISSET ( s.socket, sockSet );
 	} 
 	#ifdef BUILD_OPENSSL
-		return FD_ISSET ( SSL_get_fd ( s.ssl ), sockSet );
+		if ( s.ssl ) {
+			return FD_ISSET ( SSL_get_fd ( s.ssl ), sockSet );
+		}
 	#else
 		return false;
 	#endif
+	return false;
 }
 
 int NetworkSystem::netSocketSelectRead ( fd_set* sockSet ) 
@@ -1900,7 +1910,7 @@ int NetworkSystem::netSocketSelectRead ( fd_set* sockSet )
 	FD_ZERO ( sockSet );
 	for ( int n = 0; n < (int) m_socks.size ( ); n++ ) { // Get all sockets that are Enabled or Connected
 		NetSock& s = m_socks[ n ];
-		if ( s.state != STATE_NONE && s.state != STATE_TERMINATED ) { // look for STATE_START or NTYPE_CONNECT
+		if ( s.state != STATE_NONE && s.state != STATE_TERMINATED && s.state != STATE_FAILED ) {
 			if ( s.security == NET_SECURITY_PLAIN_TCP || s.state < STATE_SSL_HANDSHAKE ) { 
 				FD_SET ( s.socket, sockSet );
 				if ( (int) s.socket > maxfd ) maxfd = s.socket;
