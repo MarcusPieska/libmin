@@ -93,8 +93,8 @@ void NDServer::Start ()
 	netServerStart ( srv_port );
 	netSetUserCallback ( &NetEventCallback );
 	
-	dbgprintf ( "Server IP: %s\n", getIPStr ( getHostIP() ).c_str() );	
-	dbgprintf ( "Listening on %d..\n", srv_port );
+	netPrintf ( PRINT_VERBOSE, "Server IP: %s", getIPStr ( getHostIP() ).c_str() );	
+	netPrintf ( PRINT_VERBOSE, "Listening on %d ...", srv_port );
 }
 
 void NDServer::Close ( )
@@ -117,7 +117,7 @@ int NDServer::Process ( Event& e )
 		// application can gracefully handle specific net error codes here..		
 		int code = e.getInt ( );		
 		if ( code == NET_DISCONNECTED ) {
-			dbgprintf ( "  Connection to client closed unexpectedly.\n" );
+			netPrintf ( PRINT_ERROR_HS, "Connection to client closed unexpectedly" );
 		}		
 		return 0;
 	}
@@ -126,12 +126,12 @@ int NDServer::Process ( Event& e )
 	switch ( e.getName ( ) ) {
 	case 'sOkT': // Connection to client complete. (telling myself)
 		sock = e.getInt ( ); // server sock		
-		dbgprintf ( "  Connected to client: #%d\n", sock );
+		netPrintf ( PRINT_VERBOSE_HS, "Connected to client: #%d", sock );
 		return 1;
 		break;
 	case 'cFIN': // Client closed connection
 		sock = e.getInt ( );
-		dbgprintf ( "  Disconnected client: #%d\n", sock );
+		netPrintf ( PRINT_VERBOSE_HS, "Disconnected client: #%d", sock );
 		return 1;
 		break;		
 	};
@@ -146,12 +146,12 @@ int NDServer::Process ( Event& e )
 		if ( outcome != 0 ) {
 			std::cout << m_rxPkt.buf << std::endl;
 		}
-		dbgprintf ( "Received packet: SEQ-%d \n", m_rxPkt.seq_nr );
+		netPrintf ( PRINT_VERBOSE, "Received packet: SEQ-%d", m_rxPkt.seq_nr );
 		return 1;
 		break;
 	};
 
-	dbgprintf ( "   Unhandled message: %s\n", e.getNameStr( ).c_str( ) );
+	netPrintf ( PRINT_ERROR, "Unhandled message: %s", e.getNameStr( ).c_str( ) );
 	return 0;
 }
 

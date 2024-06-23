@@ -64,8 +64,9 @@
 #define NET_BUFSIZE			65535		// Typical UDP max packet size
 
 #define PRINT_VERBOSE 0
-#define PRINT_ERROR 1
-#define PRINT_ERROR_SSL 2
+#define PRINT_VERBOSE_HS 1
+#define PRINT_ERROR 2
+#define PRINT_ERROR_HS 3
 
 // -- NOTES --
 // IP               = 20 bytes
@@ -160,6 +161,9 @@ public:
 	str 		getIPStr ( netIP ip ); // return IP as a string
 	netIP		getStrToIP ( str name );
 
+protected:
+	str netPrintf ( int flag, const char* fmt, ... );
+
 private: // MP: Move this stuff
 	funcEventHandler m_userEventCallback; // User event handler
 
@@ -209,7 +213,6 @@ private: // Functions
 	bool invalid_socket_index ( int sock_i );
 	
 	// Handling tracing and logging
-	str netPrintf ( int flag, const char* fmt, ... );
 	double get_time ( );
 	void trace_setup ( const char* function_name );
 	void trace_enter ( const char* function_name );

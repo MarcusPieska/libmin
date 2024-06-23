@@ -102,7 +102,7 @@ void NDClient::Start ( str srv_addr )
 	netClientStart ( cli_port, srv_addr );
 	netSetUserCallback ( &NetEventCallback );
 	
-	dbgprintf ( "Client IP: %s\n", getIPStr ( getHostIP() ).c_str() );	
+	netPrintf ( PRINT_VERBOSE, "Client IP: %s", getIPStr ( getHostIP() ).c_str() );	
 
 	// not yet connected (see Run func)
 	m_sock = NET_NOT_CONNECTED; 
@@ -115,10 +115,8 @@ void NDClient::Reconnect ()
 	int serverPort = 16101;
     
     
-	dbgprintf ( "Connecting..\n" );	
+	netPrintf ( PRINT_VERBOSE_HS, "Connecting ..." );	
 	m_sock = netClientConnectToServer ( mSrvAddr, serverPort, false );	
-
-	std::cout << "=========================================" << std::endl;
 }
 
 void NDClient::Close ()
@@ -139,14 +137,14 @@ int NDClient::Process ( Event& e )
 
 		return 0;
 	}
-	// Process Network events
-	e.startRead ();
-	switch (e.getName()) {
+	
+	e.startRead ( ); // Process Network events
+	switch ( e.getName ( ) ) {
 	case 'sOkT': {
 		// Connection complete. server accepted OK.
-		int srv_sock = e.getInt();		// server sock
-		int cli_sock = e.getInt();		// local socket 
-		dbgprintf( "  Connected to server: %s, %d\n", getSock( cli_sock )->dest.name.c_str ( ), srv_sock );
+		int srv_sock = e.getInt ( ); // Server sock
+		int cli_sock = e.getInt ( ); // Local socket 
+		netPrintf ( PRINT_VERBOSE_HS, "Connected to: %s, %d", getSock( cli_sock )->dest.name.c_str ( ), srv_sock );
 
 		return 1;
 	  //case 'sOkT': {
@@ -155,20 +153,18 @@ int NDClient::Process ( Event& e )
 
 	// Process Application events
 	switch (e.getName()) {
-	case 'sRst': {
-		// server send back the words
-		std::string words = e.getStr ();
-		dbgprintf ("  Result from server: %s\n", words.c_str() );
+	case 'sRst': { // Server send back the words
+		std::string words = e.getStr ( );
+		netPrintf ( PRINT_VERBOSE, "Result from server: %s", words.c_str() );
 		return 1;
 		} break;
-	case 'sFIN': {
-		// server shutdown unexpectedly
-		dbgprintf ("  Server disconnected.\n" );
+	case 'sFIN': { // Server shutdown unexpectedly
+		netPrintf ( PRINT_ERROR, "Server disconnected" );
 		return 1;
 	  } break;
 	};
 
-	dbgprintf ( "   Unhandled message: %s\n", e.getNameStr().c_str() );
+	netPrintf ( PRINT_ERROR, "Unhandled message: %s", e.getNameStr ( ).c_str ( ) );
 	return 0;
 }
 
