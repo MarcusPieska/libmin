@@ -261,7 +261,7 @@ endfunction()
 ####################################################################################
 # Include CUDA
 #
-function ( _REQUIRE_CUD use_cuda_default kernel_path) 
+function ( _REQUIRE_CUDA use_cuda_default kernel_path) 
     
     OPTION (BUILD_CUDA "Build with CUDA" ${use_cuda_default})
 
