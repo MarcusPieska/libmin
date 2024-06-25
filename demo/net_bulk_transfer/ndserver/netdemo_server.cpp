@@ -137,7 +137,6 @@ int NDServer::Process ( Event& e )
 		break;		
 	};
 
-
 	switch ( e.getName ( ) ) { // Process Application events
 	case 'cRqs': 
 		e.getBuf ( (char*)&m_rxPkt, m_pktSize );

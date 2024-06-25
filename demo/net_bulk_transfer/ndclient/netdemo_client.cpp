@@ -102,20 +102,20 @@ void NDClient::Start ( str srv_addr )
 	netClientStart ( cli_port, srv_addr );
 	netSetUserCallback ( &NetEventCallback );
 	
-	netPrintf ( PRINT_VERBOSE, "Client IP: %s", getIPStr ( getHostIP() ).c_str() );	
+	dbgprintf ( "App. Client IP: %s", getIPStr ( getHostIP() ).c_str() );	
 
 	// not yet connected (see Run func)
 	m_sock = NET_NOT_CONNECTED; 
 }
+
 
 void NDClient::Reconnect ()
 {   
 	// reconnect to server
 	std::string serverName = "localhost";  // 192.168.1.78
 	int serverPort = 16101;
-    
-    
-	netPrintf ( PRINT_VERBOSE_HS, "Connecting ..." );	
+      
+	dbgprintf( "App. Connecting ..." );
 	m_sock = netClientConnectToServer ( mSrvAddr, serverPort, false );	
 }
 
@@ -144,7 +144,7 @@ int NDClient::Process ( Event& e )
 		// Connection complete. server accepted OK.
 		int srv_sock = e.getInt ( ); // Server sock
 		int cli_sock = e.getInt ( ); // Local socket 
-		netPrintf ( PRINT_VERBOSE_HS, "Connected to: %s, %d", getSock( cli_sock )->dest.name.c_str ( ), srv_sock );
+		dbgprintf ( "App. Connected to: %s, %d", getSock( cli_sock )->dest.name.c_str ( ), srv_sock );
 
 		return 1;
 	  //case 'sOkT': {
@@ -155,16 +155,16 @@ int NDClient::Process ( Event& e )
 	switch (e.getName()) {
 	case 'sRst': { // Server send back the words
 		std::string words = e.getStr ( );
-		netPrintf ( PRINT_VERBOSE, "Result from server: %s", words.c_str() );
+		dbgprintf ( "App. Result from server: %s", words.c_str() );
 		return 1;
 		} break;
 	case 'sFIN': { // Server shutdown unexpectedly
-		netPrintf ( PRINT_ERROR, "Server disconnected" );
+		dbgprintf ( "App. Server disconnected" );
 		return 1;
 	  } break;
 	};
 
-	netPrintf ( PRINT_ERROR, "Unhandled message: %s", e.getNameStr ( ).c_str ( ) );
+	dbgprintf ( "App. Unhandled message: %s", e.getNameStr ( ).c_str ( ) );
 	return 0;
 }
 

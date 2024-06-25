@@ -472,7 +472,7 @@ bool NetworkSystem::invalid_socket_index ( int sock_i )
 
 #ifdef BUILD_OPENSSL
 	
-str NetworkSystem::netGetGetErrorStringSSL ( int ret, SSL* ssl ) 
+str NetworkSystem::netGetErrorStringSSL ( int ret, SSL* ssl ) 
 {		 
 	TRACE_ENTER ( (__func__) );
 	str msg = str ( );
@@ -610,7 +610,7 @@ void NetworkSystem::netServerSetupHandshakeSSL ( int sock_i )
 
 	s.ssl = SSL_new ( s.ctx );
 	if ( ( ret = SSL_set_fd ( s.ssl, s.socket ) ) <= 0 ) {
-		str msg = netGetGetErrorStringSSL ( ret, s.ssl );
+		str msg = netGetErrorStringSSL ( ret, s.ssl );
 		netPrintf ( PRINT_ERROR_HS, "Failed at set ssl fd: Return: %d: %s", ret, msg.c_str ( ) );
 		netFreeSSL ( sock_i ); 
 		TRACE_EXIT ( (__func__) );
@@ -629,34 +629,36 @@ void NetworkSystem::netServerAcceptSSL ( int sock_i )
 { 
 	TRACE_ENTER ( (__func__) );
 	NetSock& s = m_socks[ sock_i ];	   
-	int ret;
-	if ( ( ret = SSL_accept ( s.ssl ) ) < 0 ) {
-		if ( netNoFatalErrorSSL ( sock_i, ret ) ) {
-			str msg = netGetGetErrorStringSSL ( ret, s.ssl );
-			netPrintf ( PRINT_VERBOSE_HS, "Non-blocking to ssl accept returned: %d: %s", ret, msg.c_str ( ) );
-			netPrintf ( PRINT_VERBOSE_HS, "Ready for safe transfer: %d", SSL_is_init_finished ( s.ssl ) );
-		} else {	
-			str msg = netGetGetErrorStringSSL ( ret, s.ssl );
-			netPrintf ( PRINT_ERROR_HS, "SSL_accept failed (1): Return: %d: %s", ret, msg.c_str ( ) );
-			netFreeSSL ( sock_i ); 
-			s.security |= NET_SECURITY_FAIL;
-		}
-	} else if ( ret == 0 ) {
-		str msg = netGetGetErrorStringSSL ( ret, s.ssl );
-		netPrintf ( PRINT_VERBOSE_HS, "Call to ssl accept failed (2): Return: %d: %s", ret, msg.c_str ( ) );
-		netFreeSSL ( sock_i );
-		s.security |= NET_SECURITY_FAIL;
-	} else {
+	
+	// SSL accept 
+	int ret = SSL_accept(s.ssl);
+	if (ret < 0) ret = netNonFatalErrorSSL(sock_i, ret);		// ret = 2, if want read/write
+	
+	// result status
+	if (ret <= 0) {
+		// SSL fatal error		
+		str msg = netGetErrorStringSSL(ret, s.ssl);
+		netPrintf(PRINT_ERROR_HS, "SSL_accept failed (1): Return: %d: %s", ret, msg.c_str());
+		netFreeSSL(sock_i);
+		s.security |= NET_SECURITY_FAIL;		
+		// Handshake failed
+		netManageHandshakeError(sock_i);
+
+	} else if (ret == 2) {
+		// SSL non-fatal. Want_read or Want_write
+		str msg = netGetErrorStringSSL(ret, s.ssl);
+		netPrintf(PRINT_VERBOSE_HS, "Non-blocking to ssl accept returned: %d: %s", ret, msg.c_str());
+		netPrintf(PRINT_VERBOSE_HS, "Ready for safe transfer: %d", SSL_is_init_finished(s.ssl));
+
+	} else if (ret == 1) {
+		// SSL connection complete.
 		netPrintf ( PRINT_VERBOSE_HS, "Call to ssl accept succeded" );
 		netPrintf ( PRINT_VERBOSE_HS, "Ready for safe transfer: %d", SSL_is_init_finished ( s.ssl ) );
-		s.state = STATE_CONNECTED;
-		s.lastStateChange.SetTimeNSec ( );
+				
+		// Handshake succeeded. Complete connection.
+		netServerCompleteConnection(sock_i);
 	}
-	if ( s.security & NET_SECURITY_FAIL ) {
-		netManageHandshakeError ( sock_i );
-	} else if ( s.state == STATE_CONNECTED ) {
-		netServerCompleteConnection ( sock_i );
-	}
+	
 	TRACE_EXIT ( (__func__) );
 }
 	
@@ -751,9 +753,7 @@ void NetworkSystem::netServerCompleteConnection ( int sock_i )
 	   netPrintf ( PRINT_ERROR_HS, "Unable to find server listen socket" );
 	}
 	netPort srv_port = m_socks[ srv_sock_svc ].src.port;
-	NetSock& s = m_socks [ sock_i ];
-	s.state = STATE_CONNECTED; 
-	s.lastStateChange.SetTimeNSec ( );
+	NetSock& s = m_socks [ sock_i ];	
 
 	assert(s.side != NET_CLI);
 
@@ -778,6 +778,11 @@ void NetworkSystem::netServerCompleteConnection ( int sock_i )
 	ue.attachInt ( -1 ); // cli_sock not known
 	ue.startRead ( );
 	(*m_userEventCallback) ( ue, this ); // Send to application
+
+	// Last step. Set socket as CONNECTED.
+	// (we assume the netSend of 'sOkT' succeeded)
+	s.state = STATE_CONNECTED;
+	s.lastStateChange.SetTimeNSec();
 	
 	TRACE_EXIT ( (__func__) );
 }
@@ -809,11 +814,10 @@ void NetworkSystem::netServerProcessIO ( )
 			if ( s.src.type == NTYPE_ANY ) { // Listen for TCP connections on socket
 				netServerAcceptClient ( sock_i );
 			} else {
-				if ( ( s.security & NET_SECURITY_OPENSSL ) && s.state < STATE_CONNECTED ) {
+				if ( ( s.security & NET_SECURITY_OPENSSL ) && s.state == STATE_SSL_HANDSHAKE ) {
 					netServerAcceptSSL ( sock_i );
-				} else {
-					netRecieveData ( sock_i );
 				}
+				netRecieveData(sock_i);
 			}
 		}
 	}
@@ -872,7 +876,7 @@ void NetworkSystem::netClientSetupHandshakeSSL ( int sock_i )
 	SSL_CTX_set_verify ( s.ctx, SSL_VERIFY_PEER, NULL );
 
 	if ( !SSL_CTX_load_verify_locations( s.ctx, m_pathPublicKey.c_str ( ), NULL ) ) {
-		str msg = netGetGetErrorStringSSL ( ret, s.ssl );
+		str msg = netGetErrorStringSSL ( ret, s.ssl );
 		netPrintf ( PRINT_ERROR_HS, "Load verify failed on public key: %s", msg.c_str ( ) );
 		netFreeSSL ( sock_i );
 		TRACE_EXIT ( (__func__) );
@@ -883,7 +887,7 @@ void NetworkSystem::netClientSetupHandshakeSSL ( int sock_i )
 
 	s.ssl = SSL_new ( s.ctx );
 	if ( ! s.ssl ) {
-		str msg = netGetGetErrorStringSSL ( ret, s.ssl );
+		str msg = netGetErrorStringSSL ( ret, s.ssl );
 		netPrintf ( PRINT_ERROR_HS, "Failed at new ssl: %s", msg.c_str ( ) );
 		netFreeSSL ( sock_i ); 
 		TRACE_EXIT ( (__func__) );
@@ -893,7 +897,7 @@ void NetworkSystem::netClientSetupHandshakeSSL ( int sock_i )
 	}	
 
 	if ( ( ret = SSL_set_fd ( s.ssl, s.socket ) ) != 1 ) {
-		str msg = netGetGetErrorStringSSL ( ret, s.ssl );
+		str msg = netGetErrorStringSSL ( ret, s.ssl );
 		netPrintf ( PRINT_ERROR_HS, "Failed at set fd failed: Return: %d: %s", ret, msg.c_str ( ) );
 		netFreeSSL ( sock_i );
 		TRACE_EXIT ( (__func__) ); 	
@@ -911,33 +915,38 @@ void NetworkSystem::netClientSetupHandshakeSSL ( int sock_i )
 void NetworkSystem::netClientConnectSSL ( int sock_i )
 {
 	TRACE_ENTER ( (__func__) );
-	int ret = 0, exp;
+	int exp;
 	NetSock& s = m_socks[ sock_i ];
-	if ( ( ret = SSL_connect ( s.ssl ) ) < 0 ) {
-		if ( netNoFatalErrorSSL ( sock_i, ret ) ) {
-			str msg = netGetGetErrorStringSSL ( ret, s.ssl );
-			netPrintf ( PRINT_VERBOSE_HS, "Non-blocking ssl connect returned: %d: %s", ret, msg.c_str ( ) );
-			netPrintf ( PRINT_VERBOSE_HS, "Ready for safe transfer: %d", SSL_is_init_finished ( s.ssl ) );
-		} else {
-			str msg = netGetGetErrorStringSSL ( ret, s.ssl );
-			netPrintf ( PRINT_ERROR_HS, "Call to ssl connect failed (1): Return: %d: %s", ret, msg.c_str ( ) );
-			netFreeSSL ( sock_i ); 
-			s.security |= NET_SECURITY_FAIL;	
-		}
-	} else if ( ret == 0 ) {
-		str msg = netGetGetErrorStringSSL ( ret, s.ssl );
-		netPrintf ( PRINT_ERROR_HS, "Call to ssl connect failed (2): Return: %d: %s", ret, msg.c_str ( ) );
-		netFreeSSL ( sock_i ); 
-		s.security |= NET_SECURITY_FAIL;	
-	} else {
-		netPrintf ( PRINT_VERBOSE_HS, "Call to ssl connect succeded" );
-		netPrintf ( PRINT_VERBOSE_HS, "Ready for safe transfer: %d", SSL_is_init_finished ( s.ssl ) );
-		s.state = STATE_CONNECTED;
-		s.lastStateChange.SetTimeNSec ( );
+
+	// SSL connect
+	int ret = SSL_connect(s.ssl);
+	if (ret < 0) ret = netNonFatalErrorSSL(sock_i, ret);		// ret = 2, want read/write
+
+	// result values
+	if (ret <= 0) {
+		// SSL connect error.
+		str msg = netGetErrorStringSSL(ret, s.ssl);
+		netPrintf(PRINT_ERROR_HS, "Call to ssl connect failed: Return: %d: %s", ret, msg.c_str());
+		netFreeSSL(sock_i);
+		s.security |= NET_SECURITY_FAIL;
+		// Handshake error
+		netManageHandshakeError(sock_i);
+
+	} else if (ret == 2) {
+		// SSL connect non-fatal. Want_read/write.
+		str msg = netGetErrorStringSSL(ret, s.ssl);
+		netPrintf(PRINT_VERBOSE_HS, "Non-blocking ssl connect returned: %d: %s", ret, msg.c_str());
+		netPrintf(PRINT_VERBOSE_HS, "Ready for safe transfer: %d", SSL_is_init_finished(s.ssl));
+	
+	} else if (ret == 1) {
+		// SSL connect succeeded.
+		netPrintf(PRINT_VERBOSE_HS, "Call to ssl connect succeded");
+		netPrintf(PRINT_VERBOSE_HS, "Ready for safe transfer: %d", SSL_is_init_finished(s.ssl));
+		
+		// Note: We DO NOT set state=CONNECTED here yet.
+		// Must wait for sOkT event which contains the server srv_sock ID.
 	}
-	if ( s.security & NET_SECURITY_FAIL ) {
-		netManageHandshakeError ( sock_i );
-	}
+		
 	TRACE_EXIT ( (__func__) );
 }
 
@@ -970,6 +979,7 @@ int NetworkSystem::netClientConnectToServer ( str srv_name, netPort srv_port, bo
 	str cli_name;
 	netIP cli_ip, srv_ip;
 	int cli_port, connect_result, ret;
+
 	if ( ! VALID_INDEX ( cli_sock_i ) ) { // If a socket index is not given, find a socket index
 		int dots = 0; // Check server name for dots
 		for ( int n = 0; n < srv_name.length ( ); n++ ) {
@@ -1084,11 +1094,10 @@ void NetworkSystem::netClientProcessIO ( )
 	for ( int sock_i = 0; sock_i < (int) m_socks.size ( ); sock_i++ ) { 
 		if ( netSocketSetForRead ( &sockSet, sock_i ) ) {
 			NetSock& s = m_socks[ sock_i ];
-			if ( s.security == NET_SECURITY_PLAIN_TCP ) {
-				netRecieveData ( sock_i );
-			} else if ( s.security & NET_SECURITY_OPENSSL && s.state == STATE_SSL_HANDSHAKE ) {
+			if ( s.security & NET_SECURITY_OPENSSL && s.state == STATE_SSL_HANDSHAKE ) {
 				netClientConnectSSL ( sock_i ); // This call is LESS important than the other
 			}
+			netRecieveData(sock_i);
 		}
 	}
 	NET_PERF_POP ( );
@@ -1156,16 +1165,16 @@ int NetworkSystem::netCloseConnection ( int sock_i )
 
 #ifdef BUILD_OPENSSL
 
-int NetworkSystem::netNoFatalErrorSSL ( int sock, int ret ) 
+int NetworkSystem::netNonFatalErrorSSL ( int sock, int ret ) 
 {
 	TRACE_ENTER ( (__func__) );
 	int err = SSL_get_error ( m_socks [ sock ].ssl, ret ), code;
 	if ( err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_WRITE ) {
 		TRACE_EXIT ( (__func__) );
-		return 1;
+		return 2;	// ret value to use for non-fatal want read/write
 	}
 	TRACE_EXIT ( (__func__) );
-	return 0;  
+	return ret;		// pass-thru other ret error values
 }
 
 #endif
@@ -1178,24 +1187,26 @@ void NetworkSystem::netProcessEvents ( Event& e )
 {
 	TRACE_ENTER ( (__func__) );
 	switch ( e.getName ( ) ) {
-		case 'sOkT': { 
-			// Received OK from server. connection complete.
-			int cli_sock = e.getSrcSock ( ); // Client received accept from server
-			netIP cli_ip = e.getInt64 ( ); // Get connection data from Event
-			netPort cli_port = e.getInt64 ( );
-			netIP srv_ip = e.getInt64 ( ); // Server given in Event payload
-			int srv_port = e.getInt64 ( );
-			int srv_sock = e.getInt ( );
+		case 'sOkT': {
+			// Received OK from server. connection complete.			
+			netIP cli_ip = e.getInt64 ( );		// Client IP completed
+			netPort cli_port = e.getInt64 ( );  // Client port
+			netIP srv_ip = e.getInt64 ( );		// Server IP
+			int srv_port = e.getInt64 ( );		// Server port
+			int srv_sock = e.getInt ( );		// Server sock which maintains this client
 
-			// Update client socket with server socket & client port
-			m_socks[ cli_sock ].state = STATE_CONNECTED; // mark connected
-			m_socks[ cli_sock ].lastStateChange.SetTimeNSec ( );
-			m_socks[ cli_sock ].dest.sock = srv_sock; // assign server socket
-			m_socks[ cli_sock ].src.port = cli_port; // assign client port from server
-
+			int cli_sock = e.getSrcSock();		// Client sock which received accept (srcsock, not in payload)
+	
 			// Verify client and server IPs
 			netIP srv_ip_chk = e.getSrcIP ( ); // source IP from the socket event came on
 			netIP cli_ip_chk = m_socks[ cli_sock ].src.ipL; // original client IP
+
+			// Mark the client socket as CONNECTED.
+			// Update with server socket & client port.
+			m_socks[cli_sock].state = STATE_CONNECTED; // mark connected
+			m_socks[cli_sock].lastStateChange.SetTimeNSec();
+			m_socks[cli_sock].dest.sock = srv_sock; // assign server socket
+			m_socks[cli_sock].src.port = cli_port; // assign client port from server			
 
 			// Connection complete
 			bool ssl = m_socks[cli_sock].security & NET_SECURITY_OPENSSL;
@@ -1547,10 +1558,10 @@ Event NetworkSystem::netMakeEvent ( eventStr_t name, eventStr_t sys )
 	TRACE_ENTER ( (__func__) );
 	Event e = new_event ( 120, sys, name, 0, m_eventPool  );
 	e.setSrcIP ( m_hostIp );	// default to local IP if protocol doesn't transmit sender
-	e.setTarget ( 'net ' );	// all network configure events have a 'net ' target name
+	e.setTarget ( 'net ' );		// all network configure events have a 'net ' target name
 	e.setName ( name );
 	e.startWrite ();
-	e.bOwn = false;	// dont kill on destructor
+	e.bOwn = false;				// dont kill on destructor
 	TRACE_EXIT ( (__func__) );
 	return e;
 }
@@ -1676,11 +1687,11 @@ bool NetworkSystem::netSendLiteral ( str str_lit, int sock_i )
 		} else {
 			#ifdef BUILD_OPENSSL
 				if ( ( result = SSL_write ( s.ssl, buf, len ) ) <= 0 ) {	
-					if ( netNoFatalErrorSSL ( sock_i, result ) ) { 
+					if ( netNonFatalErrorSSL ( sock_i, result ) ) { 
 						TRACE_EXIT ( (__func__) );
 						return SSL_ERROR_WANT_WRITE;
 					} else {
-						str msg = netGetGetErrorStringSSL ( result, s.ssl );
+						str msg = netGetErrorStringSSL ( result, s.ssl );
 						netPrintf ( PRINT_ERROR, "Failed at ssl write (1): Returned: %d: %s", result, msg.c_str ( ) );
 					}
 				}
@@ -1738,11 +1749,11 @@ bool NetworkSystem::netSend ( Event& e, int sock_i )
 		} else {
 			#ifdef BUILD_OPENSSL
 				if ( ( result = SSL_write ( s.ssl, buf, len ) ) <= 0 ) {	
-					if ( netNoFatalErrorSSL ( sock_i, result ) ) { 
+					if ( netNonFatalErrorSSL ( sock_i, result ) ) { 
 						TRACE_EXIT ( (__func__) );
 						return SSL_ERROR_WANT_WRITE;
 					} else {
-						str msg = netGetGetErrorStringSSL ( result, s.ssl );
+						str msg = netGetErrorStringSSL ( result, s.ssl );
 						netPrintf ( PRINT_ERROR, "Failed at ssl write (2): Returned: %d: %s", result, msg.c_str ( ) );
 					}
 				}
@@ -1857,11 +1868,11 @@ int NetworkSystem::netSocketRecv ( int sock_i, char* buf, int buflen, int& recvl
 		} else {
 			#ifdef BUILD_OPENSSL
 				if ( ( result = SSL_read( s.ssl, buf, buflen ) ) <= 0 ) {	
-					if ( netNoFatalErrorSSL ( sock_i, result ) ) { 
+					if ( netNonFatalErrorSSL ( sock_i, result ) ) { 
 						TRACE_EXIT ( (__func__) );
 						return SSL_ERROR_WANT_READ;
 					} else {
-						str msg = netGetGetErrorStringSSL ( result, s.ssl );
+						str msg = netGetErrorStringSSL ( result, s.ssl );
 						netPrintf ( PRINT_ERROR, "Failed at ssl read: Returned: %d: %s", result, msg.c_str ( ) );
 					}
 				}

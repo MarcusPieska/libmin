@@ -2,10 +2,10 @@ cmake_minimum_required(VERSION 2.8)
 set (CMAKE_INSTALL_PREFIX ${CMAKE_CURRENT_BINARY_DIR} CACHE PATH "")
 
 if (NOT DEFINED WIN32)
-  set (CMAKE_CXX_FLAGS "-Wno-multichar" )
+  set (CMAKE_CXX_FLAGS "-Wno-multichar")
 endif()
 
-set(PROJNAME nd_client)
+set(PROJNAME net_call)
 
 Project(${PROJNAME})
 Message(STATUS "-------------------------------")
@@ -14,7 +14,7 @@ Message(STATUS "Processing Project ${PROJNAME}:")
 #####################################################################################
 # LIBMIN Bootstrap
 #
-get_filename_component ( LIBMIN_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../../" REALPATH )
+get_filename_component ( LIBMIN_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../" REALPATH )
 list( APPEND CMAKE_MODULE_PATH "${LIBMIN_ROOT}/cmake" )
 list( APPEND CMAKE_PREFIX_PATH "${LIBMIN_ROOT}/cmake" )
 
@@ -90,7 +90,7 @@ if ( NOT DEFINED WIN32 )
 ENDIF()
 include_directories ("${CMAKE_CURRENT_SOURCE_DIR}")    
 
-add_executable (${PROJNAME} ${ALL_SOURCE_FILES} )
+add_executable (${PROJNAME} ${ALL_SOURCE_FILES} ${CUDA_FILES} ${GLSL_FILES} )
 
 set_property ( TARGET ${PROJNAME} APPEND PROPERTY DEPENDS )
 
@@ -103,11 +103,12 @@ set_target_properties( ${PROJNAME} PROPERTIES DEBUG_POSTFIX ${CMAKE_DEBUG_POSTFI
 #
 _LINK ( PROJECT ${PROJNAME} OPT ${LIBRARIES_OPTIMIZED} DEBUG ${LIBRARIES_DEBUG} PLATFORM ${PLATFORM_LIBRARIES} )
 
-##################################################################################
+#####################################################################################
 # Windows specific
 #
 _MSVC_PROPERTIES()
 source_group("Source Files" FILES ${MAIN_FILES} ${COMMON_SOURCE_FILES} ${PACKAGE_SOURCE_FILES})
+source_group( CUDA FILES ${CUDA_FILES})
 
 #####################################################################################
 # Install Binaries
@@ -115,17 +116,15 @@ source_group("Source Files" FILES ${MAIN_FILES} ${COMMON_SOURCE_FILES} ${PACKAGE
 #
 _DEFAULT_INSTALL_PATH()
 
-# *NOTE*: file COPY is at cmake-time, not compile-time. Need to replace with add_custom_command -E copy_directory (my own _COPY)
+# assets folder
+file (COPY "${CMAKE_CURRENT_SOURCE_DIR}/assets" DESTINATION ${CMAKE_INSTALL_PREFIX} )
 
-#-- no assets folder for now
-# file (COPY "${CMAKE_CURRENT_SOURCE_DIR}/assets" DESTINATION ${CMAKE_INSTALL_PREFIX} )	# assets folder
-
-if (WIN32)
+if (WIN32) 
   _INSTALL ( FILES ${PACKAGE_DLLS} DESTINATION ${CMAKE_INSTALL_PREFIX} )		# DLLs
   install ( FILES $<TARGET_PDB_FILE:${PROJNAME}> DESTINATION ${CMAKE_INSTALL_PREFIX} OPTIONAL )   # PDB
 endif()
 
-install ( FILES ${INSTALL_LIST} DESTINATION ${CMAKE_INSTALL_PREFIX} )		# exe, pdb
+install ( FILES ${INSTALL_LIST} DESTINATION ${CMAKE_INSTALL_PREFIX} )		# exe
 
 ###########################
 # Done

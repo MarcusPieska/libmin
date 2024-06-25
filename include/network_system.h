@@ -172,8 +172,8 @@ private: // Functions
 	// Handling non-blocking OpenSSL handshake
 	#ifdef BUILD_OPENSSL
 		void netFreeSSL ( int sock_i ); 
-		str netGetGetErrorStringSSL ( int ret, SSL* ssl );
-		int netNoFatalErrorSSL ( int sock_i, int ret ); 
+		str netGetErrorStringSSL ( int ret, SSL* ssl );
+		int netNonFatalErrorSSL ( int sock_i, int ret ); 
 		void netServerSetupHandshakeSSL ( int sock_i ); 
 		void netServerAcceptSSL ( int sock_i );
 		void netClientSetupHandshakeSSL ( int sock_i ); 

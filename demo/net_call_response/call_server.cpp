@@ -1,44 +1,20 @@
 
-#ifdef _WIN32
-  #include <conio.h>
-#endif
 
-#ifdef __linux__
-  #include <stdio.h>
-  #include <sys/ioctl.h>
-  #include <termios.h>
+#include "call_server.h"
 
-  int _kbhit() {
-    static const int STDIN = 0;
-    static bool kbinit = false;
-    if (!kbinit) {
-      termios term;
-      tcgetattr(STDIN, &term);
-      term.c_lflag &= ~ICANON;
-      tcsetattr(STDIN, TCSANOW, &term);
-      setbuf(stdin, NULL);
-      kbinit=true;
-    }
-    int bytes;
-    ioctl(STDIN, FIONREAD, &bytes);
-    return bytes;
-  }
-#endif   
+#include "network_system.h"
 
-#include "netdemo_server.h"
-
-int NDServer::NetEventCallback (Event& e, void* this_pointer) {
-    NDServer* self = static_cast<NDServer*>(this_pointer);
+int Server::NetEventCallback (Event& e, void* this_pointer) {
+    Server* self = static_cast<Server*>(this_pointer);
     return self->Process ( e );
 }
 
-void NDServer::Start ()
+void Server::Start ()
 {
 	bool bDebug = true;
 	bool bVerbose = true;
 
-	std::cout << netSetSecurityLevel ( 1 ) << std::endl;
-	std::cout << netAllowFallbackToPlainTCP ( true ) << std::endl;
+	std::cout << netSetSecurityLevel (NET_SECURITY_PLAIN_TCP | NET_SECURITY_OPENSSL) << std::endl;	
 	std::cout << netSetReconnectLimit ( 10 ) << std::endl;
 	std::cout << netSetPathToPublicKey ( "server_pubkey.pem" ) << std::endl;
 	std::cout << netSetPathToPrivateKey ( "server_private.pem" ) << std::endl;
@@ -51,28 +27,25 @@ void NDServer::Start ()
 	
 	// start server listening
 	int srv_port = 16101;
-	netServerStart ( srv_port + 0, 1 );
-	netServerStart ( srv_port + 1, 0 );
+	netServerStart ( srv_port );	
 	netSetUserCallback ( &NetEventCallback );
-
-	//netList (true);
 	
 	dbgprintf ( "Server IP: %s\n", getIPStr ( getHostIP() ).c_str() );	
 	dbgprintf ( "Listening on %d..\n", srv_port );
 }
 
-void NDServer::Close ()
+void Server::Close ()
 {
 	
 }
 
-int NDServer::Run ()
+int Server::Run ()
 {
 	// process event queue
 	return netProcessQueue ();
 }
 
-void NDServer::InitWords ()
+void Server::InitWords ()
 {
 	// demo app
 
@@ -90,7 +63,7 @@ void NDServer::InitWords ()
 	wordlist[9] = "nine";	
 }
 
-std::string NDServer::ConvertToWords ( int num )
+std::string Server::ConvertToWords ( int num )
 {
 	// demo - this is the main task of the server
 	
@@ -107,7 +80,7 @@ std::string NDServer::ConvertToWords ( int num )
 	return words;
 }
 
-void NDServer::SendWordsToClient ( std::string msg, int sock )
+void Server::SendWordsToClient ( std::string msg, int sock )
 {
 	// demo app protocol:
 	//
@@ -121,7 +94,7 @@ void NDServer::SendWordsToClient ( std::string msg, int sock )
 	netSend ( e, sock );		// send to specific client
 }
 
-int NDServer::Process ( Event& e )
+int Server::Process ( Event& e )
 {
 	int sock;
 	std::string line;
@@ -160,10 +133,8 @@ int NDServer::Process ( Event& e )
 	case 'cRqs': 
 		// client requested words for num
 		int sock = e.getInt ();     // which client 
-		int seq = e.getInt (); 
-		e.getStr ();
+		int seq = e.getInt (); 		
 		int num = e.getInt ();	
-		e.getStr ();	
 
 		// convert the num to words 
 		std::string words = ConvertToWords ( num );
@@ -180,23 +151,3 @@ int NDServer::Process ( Event& e )
 	return 0;
 }
 
-
-
-int main (int argc, char* argv[])
-{
-	addSearchPath ( ASSET_PATH );
-
-	NDServer srv ( "../trace-func-call-server" );
-
-	srv.Start ();
-	srv.InitWords ();
-
-	while ( !_kbhit() ) {
-
-		srv.Run ();
-	}
-
-	srv.Close ();  
-	
-	return 1;
-}

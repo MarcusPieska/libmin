@@ -4,9 +4,9 @@
 
 	#include "network_system.h"
 
-	class NDClient : public NetworkSystem {
+	class Client : public NetworkSystem {
 	public:		
-	    NDClient( const char* trace_file_name = NULL ) : NetworkSystem( trace_file_name ) { }
+	    Client( const char* trace_file_name = NULL ) : NetworkSystem( trace_file_name ) { }
 	
 		// networking 
 		void Start ( std::string srv_addr );
