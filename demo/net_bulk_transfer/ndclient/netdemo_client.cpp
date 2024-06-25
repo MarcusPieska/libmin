@@ -35,7 +35,7 @@
 FILE* setup_trace ( const char* trace_name ) {
   FILE* trace_ptr;
   trace_ptr = fopen (trace_name, "w");
-  chmod (trace_name, S_IRWXO);
+  //chmod (trace_name, S_IRWXO);
   return trace_ptr;
 }
 
@@ -168,6 +168,7 @@ int NDClient::Process ( Event& e )
 	return 0;
 }
 
+
 int NDClient::Run ()
 {
 	m_currtime.SetTimeNSec();	
@@ -175,7 +176,7 @@ int NDClient::Run ()
 	// demo app - request the words for a random number every 2 secs
 	//
 	float elapsed_sec = m_currtime.GetElapsedSec ( m_lasttime );
-	if ( elapsed_sec >= 0.5 ) {
+	if ( elapsed_sec >= 0.0 ) {
 		m_lasttime = m_currtime;
 		if ( netIsConnectComplete ( m_sock ) ) {	
 			m_hasConnected = true;		
@@ -189,6 +190,7 @@ int NDClient::Run ()
 	// process event queue
 	return netProcessQueue ();
 }
+
 
 void NDClient::SendPacket ( )
 {	

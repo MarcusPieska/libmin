@@ -557,7 +557,7 @@ void NetworkSystem::netServerSetupHandshakeSSL ( int sock_i )
 		return;
 	}
 
-	dbgprintf ( "OpenSSL: %s\n", OPENSSL_VERSION_TEXT ); // Openssl version 
+	dbgprintf ( "HANDSHAKE OpenSSL: %s\n", OPENSSL_VERSION_TEXT ); // Openssl version 
 
 	exp = SSL_OP_SINGLE_DH_USE;
 	if ( ( ( ret = SSL_CTX_set_options ( s.ctx, exp ) ) & exp ) != exp ) {
@@ -711,6 +711,7 @@ void NetworkSystem::netServerAcceptClient ( int sock_i )
 	SOCKET sock_h;	// New literal socket
 	int result = netSocketAccept ( sock_i, sock_h, cli_ip, cli_port );
 	if ( result < 0 ) {
+		// This should result in netManageHandshakeError (-RAMA)
 		netPrintf ( PRINT_VERBOSE_HS, "Connection not accepted" );
 		TRACE_EXIT ( (__func__) );
 		return;
@@ -754,25 +755,33 @@ void NetworkSystem::netServerCompleteConnection ( int sock_i )
 	s.state = STATE_CONNECTED; 
 	s.lastStateChange.SetTimeNSec ( );
 
+	assert(s.side != NET_CLI);
+
+	// Accept succeeded
+	bool ssl = (s.security & NET_SECURITY_OPENSSL) == NET_SECURITY_OPENSSL;
+	netPrintf(PRINT_VERBOSE, "SUCCESS %s: Server %s:%d, Accepted %s:%d", ssl ? "OpenSLL" : "TCP", getIPStr(m_hostIp).c_str(), s.src.port, getIPStr(s.dest.ipL).c_str(), s.dest.port);
+	netList();
+
+	// Send first event to client
 	Event e; 
 	e = netMakeEvent ( 'sOkT', 0 );
-	e.attachInt64 ( s.dest.ipL ); // Client IP
-	e.attachInt64 ( s.dest.port ); // Client port assigned by server!
-	e.attachInt64 ( m_hostIp ); // Server IP
-	e.attachInt64 ( srv_port );	// Server port
-	e.attachInt ( sock_i ); // Connection ID (goes back to the client)
-	netSend ( e, sock_i ); // Send TCP connected event to client
+	e.attachInt64 ( s.dest.ipL );	// Client IP
+	e.attachInt64 ( s.dest.port );	// Client port assigned by server!
+	e.attachInt64 ( m_hostIp );		// Server IP
+	e.attachInt64 ( srv_port );		// Server port
+	e.attachInt ( sock_i );			// Connection ID (goes back to the client)
+	netSend ( e, sock_i );			// Send TCP connected event to client
 
+	// Send verify event to server
 	Event ue = new_event ( 120, 'app ', 'sOkT', 0, m_eventPool ); // Inform the user-app (server) of the event	
 	ue.attachInt ( sock_i );
 	ue.attachInt ( -1 ); // cli_sock not known
 	ue.startRead ( );
 	(*m_userEventCallback) ( ue, this ); // Send to application
-
-	netPrintf ( PRINT_VERBOSE_HS, "%s %s: Accepted ip %s, port %i on port %d", (s.side == NET_CLI) ? "Client" : "Server", getIPStr(m_hostIp).c_str(), getIPStr(s.dest.ipL).c_str(), s.dest.port, s.src.port );
-	netList ( );
+	
 	TRACE_EXIT ( (__func__) );
 }
+
 
 void NetworkSystem::netServerCheckConnectionHandshakes ( ) 
 {
@@ -843,7 +852,7 @@ void NetworkSystem::netClientSetupHandshakeSSL ( int sock_i )
 		OPENSSL_init_ssl ( OPENSSL_INIT_LOAD_SSL_STRINGS, NULL );
 	#endif
 
-	dbgprintf ( "OpenSSL: %s\n", OPENSSL_VERSION_TEXT ); // Openssl version 
+	dbgprintf ( "HANDSHAKE OpenSSL: %s\n", OPENSSL_VERSION_TEXT ); // Openssl version 
 
 	//s.bio = BIO_new_socket ( s.socket, BIO_NOCLOSE );
 
@@ -1169,7 +1178,8 @@ void NetworkSystem::netProcessEvents ( Event& e )
 {
 	TRACE_ENTER ( (__func__) );
 	switch ( e.getName ( ) ) {
-		case 'sOkT': { // Received OK from server. connection complete.
+		case 'sOkT': { 
+			// Received OK from server. connection complete.
 			int cli_sock = e.getSrcSock ( ); // Client received accept from server
 			netIP cli_ip = e.getInt64 ( ); // Get connection data from Event
 			netPort cli_port = e.getInt64 ( );
@@ -1187,14 +1197,16 @@ void NetworkSystem::netProcessEvents ( Event& e )
 			netIP srv_ip_chk = e.getSrcIP ( ); // source IP from the socket event came on
 			netIP cli_ip_chk = m_socks[ cli_sock ].src.ipL; // original client IP
 
+			// Connection complete
+			bool ssl = m_socks[cli_sock].security & NET_SECURITY_OPENSSL;
+			netPrintf(PRINT_VERBOSE, "SUCCESS %s. Client %s:%d (sock %d), To Server: %s:%d (sock %d)", ssl ? "OpenSSL" : "TCP", getIPStr(cli_ip).c_str(), cli_port, cli_sock, getIPStr(srv_ip).c_str(), srv_port, srv_sock);
+			netList();
+
 			Event e = new_event ( 120, 'app ', 'sOkT', 0, m_eventPool ); // Inform the user-app (client) of the event
 			e.attachInt ( srv_sock );
 			e.attachInt ( cli_sock );		
 			e.startRead ( );
-			(*m_userEventCallback) ( e, this ); // Send to application
-
-			netPrintf ( PRINT_VERBOSE_HS, "Client:   Linked TCP. %s:%d, sock: %d --> Server: %s:%d, sock: %d", getIPStr(cli_ip).c_str(), cli_port, cli_sock, getIPStr(srv_ip).c_str(), srv_port, srv_sock );
-			netList ( );
+			(*m_userEventCallback) ( e, this ); // Send to application			
 			break;
 		} 
 		case 'sExT': { // Server recv, exit TCP from client. sEnT
@@ -1255,9 +1267,11 @@ int NetworkSystem::netManageHandshakeError ( int sock_i )
 {
 	TRACE_ENTER ( (__func__) );
 	NetSock& s = m_socks[ sock_i ];
+	int security_fail = s.security;		// record the security levels at failure
 	int outcome = 0;
 	bool fallback_allowed = ( s.security & NET_SECURITY_OPENSSL ) && ( s.security & NET_SECURITY_PLAIN_TCP );
 	if ( fallback_allowed && s.side == NET_CLI ) {
+		// client try fallback to plain TCP
 		s.security = NET_SECURITY_PLAIN_TCP;
 		s.srvPort -= 1;
 		s.dest.port -= 1;
@@ -1275,6 +1289,10 @@ int NetworkSystem::netManageHandshakeError ( int sock_i )
 	} else {
 		outcome = netDeleteSocket ( sock_i, 0 );
 	}
+	// Handshake failed
+	bool ssl = (security_fail & NET_SECURITY_OPENSSL);
+	netPrintf(PRINT_VERBOSE, "FAILED %s.", ssl ? "OpenSSL" : "TCP" );
+
 	TRACE_EXIT ( (__func__) );
 	return outcome;
 }
@@ -1314,7 +1332,7 @@ int NetworkSystem::netDeleteSocket ( int sock_i, int force )
 		return 0;
 	}
 	NetSock& s = m_socks[ sock_i ];
-	netPrintf ( PRINT_VERBOSE, "Terminating socket: %d", sock_i );
+	netPrintf ( PRINT_VERBOSE_HS, "Terminating socket: %d", sock_i );
 	if ( s.state != NTYPE_CONNECT && s.state != STATE_CONNECTED && force == 0 ) {
 		 TRACE_EXIT ( (__func__) );
 		 return 0;
@@ -1597,11 +1615,11 @@ void NetworkSystem::netList ( bool verbose )
 {
 	TRACE_ENTER ( (__func__) );
 	if ( m_printVerbose || verbose ) { // Print the network
-		str side, mode, stat, src, dst, msg;
+		str side, mode, stat, src, dst, msg, secur;
 		dbgprintf ( "\n------ NETWORK SOCKETS. MyIP: %s, %s\n", m_hostName.c_str ( ), getIPStr ( m_hostIp ).c_str ( ) );
 		for ( int n = 0; n < m_socks.size ( ); n++ ) {
 			side = ( m_socks[ n ].side == NET_CLI ) ? "cli" : "srv";
-			mode = ( m_socks[ n ].mode == NET_TCP ) ? "tcp" : "udp";
+			secur = (m_socks[ n ].security & NET_SECURITY_OPENSSL) ? "ssl" : "tcp";			// future: udp should made a security level, remove s.mode variable.
 			switch ( m_socks[ n ].state ) {
 				case STATE_NONE:		stat = "off      ";	break;
 				case STATE_START:	stat = "enable   "; break;
@@ -1618,7 +1636,7 @@ void NetworkSystem::netList ( bool verbose )
 			if ( m_socks[ n ].side==NET_SRV && m_socks[ n ].state == STATE_START && m_socks[ n ].src.ipL == 0 )
 				msg = "<-- Server Listening Port";
 
-			dbgprintf ( "%d: %s %s %s src[%s] dst[%s] %s\n", n, side.c_str(), mode.c_str(), stat.c_str(), src.c_str(), dst.c_str(), msg.c_str() );
+			dbgprintf ( "%d: %s %s %s src[%s] dst[%s] %s\n", n, side.c_str(), secur.c_str(), stat.c_str(), src.c_str(), dst.c_str(), msg.c_str() );
 		}
 		dbgprintf ( "------\n");
 	}

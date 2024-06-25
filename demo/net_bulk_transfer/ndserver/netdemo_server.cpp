@@ -31,7 +31,7 @@
 FILE* setup_trace ( const char* trace_name ) {
   FILE* trace_ptr;
   trace_ptr = fopen (trace_name, "w");
-  chmod (trace_name, S_IRWXO);
+  //chmod (trace_name, S_IRWXO);
   return trace_ptr;
 }
 
@@ -122,6 +122,7 @@ int NDServer::Process ( Event& e )
 		return 0;
 	}
 
+
 	e.startRead ( ); // Process Network events
 	switch ( e.getName ( ) ) {
 	case 'sOkT': // Connection to client complete. (telling myself)
@@ -135,6 +136,7 @@ int NDServer::Process ( Event& e )
 		return 1;
 		break;		
 	};
+
 
 	switch ( e.getName ( ) ) { // Process Application events
 	case 'cRqs': 
