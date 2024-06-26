@@ -111,6 +111,7 @@ int Server::BuildTestBuffer( int test_id )
 	event_sz = test_start_sz;
 	printf("-------------------\n");
 	printf("TEST INPUT - Network should deserialize the following events:\n");
+
 	for (int i = 0; i < test_cnt; i++) {
 
 		// make event
@@ -130,6 +131,7 @@ int Server::BuildTestBuffer( int test_id )
 		m_testptr += event_sz;
 		event_sz += test_inc_sz;								// continually increase event_sz
 	}
+
 	printf("TEST READY..\n");
 	printf("-------------------\n");
 	
@@ -142,8 +144,7 @@ int Server::Run ()
 	// Injection test
 
 	if (m_inject >= 0 ) {		
-
-		// build test buffer with multiple events of various sizes
+		
 		int PKSZ = TEST_TCP_PACKET_SIZE;
 		dbgprintf("RUNNING INJECTION TEST..\n");		
 		dbgprintf("  TEST TCP PACKET WINDOW: %d\n", PKSZ);
