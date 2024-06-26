@@ -48,16 +48,18 @@ int main (int argc, char* argv[])
 	addSearchPath ( ASSET_PATH );
 
     // launch server with -s arg
-    if (argc > 1) {
-        if (strcmp(argv[1], "-s") == 0) {
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "-s") == 0) {
             dbgprintf("STARTING SERVER.\n");
             server = true;
+        }    
+        if (strcmp(argv[i], "-i") == 0) {
+            dbgprintf("INJECTION TEST.\n");
+            inject = atoi(argv[i+1]);
         }
-    }
-    if (argc > 3) {
-        if (strcmp(argv[2], "-i") == 0) {
-            dbgprintf("INJECTION TEST.\n");     // cmd -s -i {n}, where {n} = injection test id
-            inject = atoi(argv[3]);
+        if (strcmp(argv[i], "-f") == 0) {
+            dbgprintf("INJECTION FROM FILES (packet_stream.raw, packet_sizes.txt).\n"); 
+            inject = 255;
         }
     }
 

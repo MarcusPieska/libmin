@@ -1,7 +1,6 @@
 
 
 
-
 #ifdef _WIN32
   #include <conio.h>
 #endif
@@ -82,7 +81,7 @@ void NDClient::Start ( str srv_addr )
 	bool bVerbose = true;
 	m_startTime.SetTimeNSec ( );
 	m_flowTrace = setup_trace ( "../tcp-app-tx-flow" );
-	m_pktSize = init_buf ( m_txPkt.buf, PKT_SIZE ) + sizeof ( int );
+	m_pktSize = init_buf( m_txPkt.buf, PKT_SIZE );
 	m_txPkt.seq_nr = 1;
 	m_pktLimit = 1000;
 
@@ -204,6 +203,7 @@ void NDClient::SendPacket ( )
 	bool outcome = true;
 	while ( outcome && m_txPkt.seq_nr < m_pktLimit ) {
 		Event e = new_event ( m_pktSize + sizeof(int), 'app ', 'cRqs', 0, getNetPool ( ) );	
+		e.attachInt ( m_pktSize );
 		e.attachBuf ( (char*)&m_txPkt, m_pktSize );
 		outcome = netSend ( e );
 		if ( outcome ) {

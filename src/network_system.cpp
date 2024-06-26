@@ -34,6 +34,8 @@
 	#include <openssl/x509v3.h>
 #endif
 
+#define DEBUG_STREAM				// enable this to read/write network stream to disk file
+
 //----------------------------------------------------------------------------------------------------------------------
 // TRACING FUNCTIONS
 //----------------------------------------------------------------------------------------------------------------------
@@ -1694,7 +1696,17 @@ void NetworkSystem::netReceiveData ( int sock_i )
 	}
 	NET_PERF_POP ( );
 
-	// netPrintf(PRINT_VERBOSE, "RECV BUFFER LEN: %d bytes.\n", m_packetLen);
+	#ifdef DEBUG_STREAM
+		// write TCP/IP stream to disk, with packet sizes
+		if (m_packetLen > 0) {
+			FILE* fp1 = fopen("packet_stream.raw", "ab");
+			fwrite(m_packetBuf, m_packetLen, 1, fp1);
+			fclose(fp1);
+			FILE* fp2 = fopen("packet_sizes.txt", "at");
+			fprintf(fp2, "%d\n", m_packetLen);
+			fclose(fp2);
+		}
+	#endif		
 
 	// Deserialize events from input stream
 	if (m_packetLen > 0) {

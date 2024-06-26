@@ -31,6 +31,8 @@
 		char*		m_testbuf;
 		char*		m_testptr;
 		int			m_testlen;
+
+		std::vector<int>	m_packet_list;
 	};
 
 #endif

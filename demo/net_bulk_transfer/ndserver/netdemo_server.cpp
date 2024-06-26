@@ -63,6 +63,7 @@ int NDServer::NetEventCallback (Event& e, void* this_pointer) {
     return self->Process ( e );
 }
 
+
 double NDServer::GetUpTime ( ) 
 {
 	TimeX current_time;
@@ -141,12 +142,14 @@ int NDServer::Process ( Event& e )
 		break;		
 	};
 
+
 	switch ( e.getName ( ) ) { // Process Application events
 	case 'cRqs': 
-		e.getBuf ( (char*)&m_rxPkt, m_pktSize );
-		int outcome = memcmp ( &m_refPkt, &m_rxPkt, m_pktSize );
+		int pkSize = e.getInt();
+		e.getBuf ( (char*) &m_rxPkt, pkSize );
+		int outcome = memcmp ( &m_refPkt, &m_rxPkt, pkSize );
 		m_refPkt.seq_nr++;
-		fprintf ( m_flowTrace, "%.3f:%u:%u:%d\n", GetUpTime ( ), m_rxPkt.seq_nr, m_pktSize, outcome );
+		fprintf ( m_flowTrace, "%.3f:%u:%u:%d\n", GetUpTime ( ), m_rxPkt.seq_nr, pkSize, outcome );
 		fflush ( m_flowTrace );
 		if ( outcome != 0 ) {
 			std::cout << m_rxPkt.buf << std::endl;
