@@ -134,7 +134,10 @@ public:
 	// Event processing
 	void netProcessEvents ( Event& e );
 	int netProcessQueue ( void );
-	int netRecieveData ( int sock_i );
+	void netResizeRecvBuf(int len);
+	void netReceiveData ( int sock_i );
+	void netReceiveByInjectedBuf(int sock_i, char* buf, int buflen);
+	void netDeserializeEvents(int sock_i);
 	Event netMakeEvent ( eventStr_t name, eventStr_t sys );	
 	bool netSend ( Event& e, int sock=-1 );
 	bool netSendLiteral ( str str_lit, int sock_i );
@@ -257,6 +260,9 @@ private: // State
 	int m_bufferLen;
 	char* m_bufferPtr;
 	char m_buffer[ NET_BUFSIZE ];
+	char* m_recvPtr;
+	char* m_recvBuf;
+	int m_recvLen, m_recvMax;
 	int	m_maxPacketLen;
 	
 	// Debug and trace related

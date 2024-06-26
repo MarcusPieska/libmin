@@ -5,7 +5,7 @@ if (NOT DEFINED WIN32)
   set (CMAKE_CXX_FLAGS "-Wno-multichar")
 endif()
 
-set(PROJNAME net_call)
+set(PROJNAME net_deserialize)
 
 Project(${PROJNAME})
 Message(STATUS "-------------------------------")

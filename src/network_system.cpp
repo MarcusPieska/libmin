@@ -408,6 +408,14 @@ NetworkSystem::NetworkSystem ( const char* trace_file_name )
 	m_check = 0;
 	m_indentCount = 0;
 	
+	// internal buffers
+	m_bufferPtr = &m_buffer[0];
+	m_bufferLen = 0;
+	m_recvMax = 65535;
+	m_recvBuf = (char*) malloc( m_recvMax );	
+	m_recvPtr = m_recvBuf;
+	m_recvLen = 0;	
+	
 	if ( trace_file_name != NULL ) {
 		TRACE_SETUP (( trace_file_name ));
 	} 
@@ -817,7 +825,7 @@ void NetworkSystem::netServerProcessIO ( )
 				if ( ( s.security & NET_SECURITY_OPENSSL ) && s.state == STATE_SSL_HANDSHAKE ) {
 					netServerAcceptSSL ( sock_i );
 				}
-				netRecieveData(sock_i);
+				netReceiveData(sock_i);
 			}
 		}
 	}
@@ -1097,7 +1105,7 @@ void NetworkSystem::netClientProcessIO ( )
 			if ( s.security & NET_SECURITY_OPENSSL && s.state == STATE_SSL_HANDSHAKE ) {
 				netClientConnectSSL ( sock_i ); // This call is LESS important than the other
 			}
-			netRecieveData(sock_i);
+			netReceiveData(sock_i);
 		}
 	}
 	NET_PERF_POP ( );
@@ -1436,59 +1444,162 @@ int NetworkSystem::netProcessQueue ( void )
 	return iOk;
 }
 
-//----------------------------------------------------------------------------------------------------------------------
-// -> RECIEVE CODE <-
-//----------------------------------------------------------------------------------------------------------------------
-
-int NetworkSystem::netRecieveData ( int sock_i )
+void NetworkSystem::netResizeRecvBuf(int len)
 {
-	TRACE_ENTER ( (__func__) );
-	NetSock& s = m_socks[ sock_i ];
-	NET_PERF_PUSH ( "recv" ); // Receive incoming data on socket
-	int result = netSocketRecv ( sock_i, m_buffer, NET_BUFSIZE-1, m_bufferLen );
-	if ( result != 0 || m_bufferLen == 0 ) {
-		netReportError ( result ); // Recv failed. Report net error
-		TRACE_EXIT ( (__func__) );
-		return 0;
+	if (len > m_recvMax) {
+		int new_max = len;
+		char* new_recv = (char*) malloc( new_max );
+		memcpy(new_recv, m_recvBuf, m_recvLen);		
+		free(m_recvBuf);
+		m_recvBuf = new_recv;
+		m_recvMax = new_max;
 	}
-	NET_PERF_POP ( );
+}
 
-	m_bufferPtr = &m_buffer[ 0 ];
+
+void NetworkSystem::netDeserializeEvents(int sock_i)
+{
+	NetSock& s = m_socks[ sock_i ];
+	int header_sz = Event::staticSerializedHeaderSize();
+
+	// Consumer pattern:
+	// - retrieve entire event from stream directly if possible (for performance)
+	// - if not, consume input stream into temp buffer	
+	// - build complete event and clear temp when complete	
+	// Notes:
+	//  bufferLen = length of data remaining on this call (decreases as consumed)
+	//  eventLen  = total length of expected event (including header) 
+	//  recvLen   = partial length currently received (over multiple calls to this func), when 0 = start new event
+	//  recvMax   = maximum length of temp buffer, may dynamic resize for large events	
+
+	m_bufferPtr = &m_buffer[0];	
+
+	while (m_bufferLen > 0) {
+
+		// Check for new or partial event
+		if (m_recvLen == 0 && m_bufferLen > header_sz) {
+
+			// Start of new event
+			// retrieve total event length from encoded header
+			m_eventLen = *((int*)(m_bufferPtr + Event::staticOffsetLenInfo())) + Event::staticSerializedHeaderSize();			
+
+			if (m_bufferLen >= m_eventLen) {
+				// Create event
+				m_event = new_event(m_eventLen - Event::staticSerializedHeaderSize(), 0, 0, 0, m_eventPool);		// no name/target. will be set during deserialize				
+				m_event.rescope("nets");									// belongs to network now
+				m_event.setSrcSock(sock_i);								// tag event /w socket
+				m_event.setSrcIP(m_socks[sock_i].src.ipL);				// recover sender address from socket
+
+				// Deserialize directly from input buffer (for performance)
+				m_event.deserialize(m_bufferPtr, m_eventLen);			// deserialize	
+				//dbgprintf("event: %d, %s, %.5s\n", m_eventLen, m_event.getNameStr().c_str(), m_event.getData());
+				netQueueEvent(m_event);									// queue & delete				
+				delete_event(m_event);
+				m_bufferLen -= m_eventLen;								// consume event size in bytes
+				m_bufferPtr += m_eventLen;
+				m_eventLen = 0;											// reset event size (recvLen remains 0)
+
+			}
+			else {
+				// Store partial event in recv buffer	
+				netResizeRecvBuf(m_recvLen + m_bufferLen);
+				memcpy(m_recvPtr, m_bufferPtr, m_bufferLen);			// transfer into recv buffer
+				m_recvPtr += m_bufferLen;								// advance recv buffer
+				m_recvLen += m_bufferLen;
+				m_bufferPtr += m_bufferLen;								// consume remaining buffer len bytes
+				m_bufferLen = 0;
+			}
+
+		} else {
+			// Continuation of event. Store additional data in recv buffer
+			netResizeRecvBuf(m_recvLen + m_bufferLen);			
+			memcpy(m_recvPtr, m_bufferPtr, m_bufferLen);			// transfer into recv buffer
+			m_recvPtr += m_bufferLen;								// advance recv buffer
+			m_recvLen += m_bufferLen;
+			m_bufferPtr += m_bufferLen;								// consume remaining buffer len bytes
+			m_bufferLen = 0;
+
+			if (m_recvLen > header_sz && m_eventLen == 0)  {
+				m_eventLen = *((int*)(m_recvBuf + Event::staticOffsetLenInfo())) + Event::staticSerializedHeaderSize();				
+			}
+		}
+
+		// Check for possibly multiple complete events on recv buffer
+		while ( m_recvLen >= m_eventLen && m_eventLen > 0) {
+			// Create event
+			m_event = new_event(m_eventLen - Event::staticSerializedHeaderSize(), 0, 0, 0, m_eventPool);		// no name/target. will be set during deserialize				
+			m_event.rescope("nets");								// belongs to network now
+			m_event.setSrcSock(sock_i);								// tag event /w socket
+			m_event.setSrcIP(m_socks[sock_i].src.ipL);				// recover sender address from socket
+			
+			// Deserialize event from recv buf			
+			m_event.deserialize(m_recvBuf, m_eventLen);				// deserialize
+			//dbgprintf("event: %d, %s, %.5s\n", m_eventLen, m_event.getNameStr().c_str(), m_event.getData() );			
+			netQueueEvent(m_event);									// queue & delete				
+			delete_event(m_event);
+			
+			// Reduce recv buffer
+			m_recvLen -= m_eventLen;								// consume event bytes in recv buffer
+			memcpy(m_recvBuf, m_recvBuf + m_eventLen, m_recvLen);	// transfer remaining bytes to beginning (memcpy ok since data always moving backwards in mem)
+			m_recvPtr = m_recvBuf + m_recvLen;						// reset to beginning of recv			
+			m_eventLen = 0;											// reset event len
+
+			// Check for additional event(s)
+			if (m_recvLen > header_sz) {
+				m_eventLen = *((int*)(m_recvBuf + Event::staticOffsetLenInfo())) + Event::staticSerializedHeaderSize();
+			}
+		}
+
+	}
+} 
+
+
+
+ 
+// -- Original deserialize func (NOT CORRECT)
+//
+/* void NetworkSystem::netDeserializeEvents(int sock_i)
+{
+	m_bufferPtr = &m_buffer[0];
 	bool bDeserial;
-	while ( m_bufferLen > 0 ) {
-		if ( m_event.isEmpty ( ) ) { // Check the type of incoming socket
-			if ( m_socks[ sock_i ].blocking ) {
+
+	while (m_bufferLen > 0) {
+		if (m_event.isEmpty()) { // Check the type of incoming socket
+			if (m_socks[sock_i].blocking) {
 				// Blocking socket. NOT an Event socket. Attach arbitrary data onto a new event.
 				m_eventLen = m_bufferLen;
 				m_event = new_event(m_eventLen + 128, 'app ', 'HTTP', 0, m_eventPool);
-				m_event.rescope( "nets" );
-				m_event.attachInt( m_bufferLen ); // attachInt+Buf = attachStr
-				m_event.attachBuf( m_bufferPtr, m_bufferLen );
+				m_event.rescope("nets");
+				m_event.attachInt(m_bufferLen); // attachInt+Buf = attachStr
+				m_event.attachBuf(m_bufferPtr, m_bufferLen);
 				m_dataLen = m_event.mDataLen;
-			} else {
+			}
+			else {
 				// Non-blocking socket. Receive a complete Event.
 				// directly read length-of-event info from incoming data (m_dataLen value)
-				m_dataLen = *((int*) (m_bufferPtr + Event::staticOffsetLenInfo ( ) ));
+				m_dataLen = *((int*)(m_bufferPtr + Event::staticOffsetLenInfo()));
 
 				// compute total event length, including header
-				m_eventLen = m_dataLen + Event::staticSerializedHeaderSize ( );
+				m_eventLen = m_dataLen + Event::staticSerializedHeaderSize();
 
 				// Event is allocated with no name/target as this will be set during deserialize
-				NET_PERF_PUSH ( "newevent" );
-				m_event = new_event ( m_dataLen, 0, 0, 0, m_eventPool );
-				NET_PERF_POP ( );
-				m_event.rescope ( "nets" ); // Belongs to network now
+				m_event = new_event(m_dataLen, 0, 0, 0, m_eventPool);
+				m_event.rescope("nets"); // Belongs to network now
+
+				// check for serialize issue
+				if (m_bufferLen < Event::staticSerializedHeaderSize()) {
+					netPrintf(PRINT_ERROR, "Serialize issue. Buffer len %d less than event header %d. CORRUPT AFTER THIS POINT!", m_bufferLen, Event::staticSerializedHeaderSize() );
+				}
 
 				// Deserialize of actual buffer length (EventLen or BufferLen)
-				NET_PERF_PUSH ( "header" );
-				m_event.deserialize ( m_bufferPtr, imin(m_eventLen, m_bufferLen ) ); // Deserialize header
-				NET_PERF_POP ( );
+				m_event.deserialize(m_bufferPtr, imin(m_eventLen, m_bufferLen)); // Deserialize header				
 			}
-			m_event.setSrcSock ( sock_i );		// <--- tag event /w socket
-			m_event.setSrcIP ( m_socks[ sock_i ].src.ipL ); // recover sender address from socket
+			m_event.setSrcSock(sock_i);		// <--- tag event /w socket
+			m_event.setSrcIP(m_socks[sock_i].src.ipL); // recover sender address from socket
 			bDeserial = true;
 
-		} else { // More data for existing Event..
+		}
+		else { // More data for existing Event..
 			bDeserial = false;
 		}
 
@@ -1498,43 +1609,84 @@ int NetworkSystem::netRecieveData ( int sock_i )
 		//    bufferLen = eventLen      one event, or end of event
 		//    bufferLen < eventLen 			part of large event
 
-		if ( m_bufferLen >= m_eventLen ) { // One event, multiple, or end of large event..
-			if ( ! bDeserial )	{ // Not start of event, attach more data
-				NET_PERF_PUSH ( "attach" );
-				m_event.attachBuf ( m_bufferPtr, m_bufferLen );
-				NET_PERF_POP ( );
+		if (m_bufferLen >= m_eventLen) { // One event, multiple, or end of large event..
+			if (!bDeserial) { // Not start of event, attach more data				
+				m_event.attachBuf(m_bufferPtr, m_bufferLen);
 			}
 			// End of event
 			m_bufferLen -= m_eventLen; // Advance buffer
 			m_bufferPtr += m_eventLen;
-			m_eventLen = 0;
-			int hsz = Event::staticSerializedHeaderSize();
-			netPrintf ( PRINT_VERBOSE, "RX %d bytes, %s", m_event.mDataLen + hsz, m_event.getNameStr ( ).c_str ( ) );
 			
-			if ( m_event.mDataLen != m_dataLen ) { // Confirm final size received matches indicated payload size
-				netPrintf ( PRINT_ERROR, "Event recv length %d != expected %d", m_event.mDataLen + hsz, m_eventLen + hsz);
+			// debugging
+			int hsz = Event::staticSerializedHeaderSize();
+			netPrintf(PRINT_VERBOSE, "RX %d bytes, %s", m_event.mDataLen + hsz, m_event.getNameStr().c_str());
+			if ( m_event.mDataLen + hsz != m_eventLen ) {
+				netPrintf(PRINT_ERROR, "Serialize issue. Event length %d != expected %d.", m_event.mDataLen + hsz, m_eventLen);
 			}
-			NET_PERF_PUSH ( "queue" );
-			netQueueEvent ( m_event );
-			NET_PERF_POP ( );
-			NET_PERF_PUSH ( "delete" );
-			delete_event ( m_event );
-			NET_PERF_POP ( );
 
-		} else { // Partial event..
-			if ( ! bDeserial ) { // Not start of event, attach more data
-				NET_PERF_PUSH ( "attach" );
-				m_event.attachBuf ( m_bufferPtr, m_bufferLen );
-				NET_PERF_POP ( );
+			// Reset event length
+			m_eventLen = 0;
+		
+			netQueueEvent(m_event);						
+			delete_event(m_event);
+		}
+		else { // Partial event..
+			if (!bDeserial) { // Not start of event, attach more data				
+				m_event.attachBuf(m_bufferPtr, m_bufferLen);
 			}
 			m_eventLen -= m_bufferLen;
 			m_bufferPtr += m_bufferLen;
 			m_bufferLen = 0;
 		}
-	} // end while
+	}	
+} */
 
-	TRACE_EXIT ( (__func__) );
-	return m_bufferLen;
+
+void NetworkSystem::netReceiveByInjectedBuf(int sock_i, char* buf, int buflen)
+{
+	TRACE_ENTER((__func__));
+
+	// This function receives an input stream from a specified buffer,
+	// INSTEAD of the TCP/IP network. Used primarily for testing, it 
+	// allows for the injection of a custom event stream to test deserialization.
+	// Events will be pushed to the network queue for app processing as if they came from a network.
+	// See also: netReceiveData
+	
+	// inject buffer
+	memcpy(m_buffer, buf, buflen);
+	m_bufferLen = buflen;
+
+	// Deserialize events from input stream
+	netDeserializeEvents(sock_i);
+
+	TRACE_EXIT((__func__));	
+}
+
+//----------------------------------------------------------------------------------------------------------------------
+// -> RECIEVE CODE <-
+//----------------------------------------------------------------------------------------------------------------------
+
+void NetworkSystem::netReceiveData ( int sock_i )
+{
+	TRACE_ENTER ( (__func__) );
+	NetSock& s = m_socks[ sock_i ];
+
+	// Receive input stream from TCP/IP network
+	NET_PERF_PUSH ( "recv" ); 
+	int result = netSocketRecv ( sock_i, m_buffer, NET_BUFSIZE-1, m_bufferLen );
+	if ( result != 0 || m_bufferLen == 0 ) {
+		netReportError ( result ); // Recv failed. Report net error
+		TRACE_EXIT ( (__func__) );
+		return;
+	}
+	NET_PERF_POP ( );
+
+	// netPrintf(PRINT_VERBOSE, "RECV BUFFER LEN: %d bytes.\n", m_bufferLen);
+
+	// Deserialize events from input stream
+	netDeserializeEvents( sock_i );
+
+	TRACE_EXIT ( (__func__) );	
 }
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -1719,6 +1871,7 @@ bool NetworkSystem::netCheckError ( int result, int sock_i )
 	TRACE_EXIT ( (__func__) );
 	return true;
 }
+
 
 bool NetworkSystem::netSend ( Event& e, int sock_i )
 {

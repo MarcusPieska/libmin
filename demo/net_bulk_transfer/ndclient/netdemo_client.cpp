@@ -199,7 +199,7 @@ void NDClient::SendPacket ( )
 		return;
 	}
 	bool outcome = true;
-	if ( outcome && m_txPkt.seq_nr < m_pktLimit ) {
+	while ( outcome && m_txPkt.seq_nr < m_pktLimit ) {
 		Event e = new_event ( m_pktSize + sizeof(int), 'app ', 'cRqs', 0, getNetPool ( ) );	
 		e.attachBuf ( (char*)&m_txPkt, m_pktSize );
 		outcome = netSend ( e );
@@ -210,6 +210,7 @@ void NDClient::SendPacket ( )
 		}
 	}
 }
+
 
 str get_addr( int argc, char **argv ) 
 {

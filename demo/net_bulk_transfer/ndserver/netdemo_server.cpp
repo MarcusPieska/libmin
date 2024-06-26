@@ -97,6 +97,7 @@ void NDServer::Start ()
 	netPrintf ( PRINT_VERBOSE, "Listening on %d ...", srv_port );
 }
 
+
 void NDServer::Close ( )
 {
 }
