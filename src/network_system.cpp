@@ -1461,6 +1461,11 @@ void NetworkSystem::netResizeRecvBuf(int len)
 		m_recvMax = new_max;
 	}
 }
+void NetworkSystem::netResetRecvBuf()
+{
+	m_recvLen = 0;
+	m_recvPtr = m_recvBuf;
+}
 
 void NetworkSystem::netDeserializeEvents(int sock_i)
 {

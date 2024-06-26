@@ -178,7 +178,6 @@ int Server::BuildTestBuffer ( int test_id )
 	return m_testlen;
 }
 
-
 int Server::Run ()
 {
 	// Injection test
@@ -204,6 +203,9 @@ int Server::Run ()
 			len -= pksz;
 			packet_cnt++;
 		}
+		
+		// reset stream in case the debug stream was partial/incomplete
+		netResetRecvBuf ();
 	}
 
 	// process event queue

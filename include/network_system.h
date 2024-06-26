@@ -134,6 +134,7 @@ public:
 	// Event processing
 	void netProcessEvents ( Event& e );
 	int netProcessQueue ( void );
+	void netResetRecvBuf();
 	void netResizeRecvBuf(int len);
 	void netReceiveData ( int sock_i );
 	void netReceiveByInjectedBuf(int sock_i, char* buf, int buflen);
