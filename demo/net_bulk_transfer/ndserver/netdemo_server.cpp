@@ -1,4 +1,6 @@
 
+
+
 #ifdef _WIN32
   #include <conio.h>
 #endif
@@ -97,15 +99,16 @@ void NDServer::Start ()
 	netPrintf ( PRINT_VERBOSE, "Listening on %d ...", srv_port );
 }
 
-
 void NDServer::Close ( )
 {
 }
+
 
 int NDServer::Run ( )
 {
 	return netProcessQueue ();
 }
+
 
 int NDServer::Process ( Event& e )
 {
@@ -148,7 +151,7 @@ int NDServer::Process ( Event& e )
 		if ( outcome != 0 ) {
 			std::cout << m_rxPkt.buf << std::endl;
 		}
-		netPrintf ( PRINT_VERBOSE, "Received packet: SEQ-%d", m_rxPkt.seq_nr );
+		netPrintf ( PRINT_VERBOSE, "Received event: %d, SEQ-%d", e.getSerializedLength(), m_rxPkt.seq_nr );
 		return 1;
 		break;
 	};
@@ -167,3 +170,4 @@ int main ( int argc, char* argv [ ] )
 	srv.Close ( );  
 	return 1;
 }
+

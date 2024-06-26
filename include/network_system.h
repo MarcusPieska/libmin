@@ -257,9 +257,10 @@ private: // State
 	Event m_event; // Incoming event
 
 	// Network buffers
-	int m_bufferLen;
-	char* m_bufferPtr;
-	char m_buffer[ NET_BUFSIZE ];
+	int m_packetLen;
+	int m_packetCounter;
+	char* m_packetPtr;
+	char  m_packetBuf[ NET_BUFSIZE ];
 	char* m_recvPtr;
 	char* m_recvBuf;
 	int m_recvLen, m_recvMax;

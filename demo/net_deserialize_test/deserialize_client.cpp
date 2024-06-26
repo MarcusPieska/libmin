@@ -21,7 +21,7 @@ void Client::Start (std::string srv_addr)
 	bool bDebug = false;
 	bool bVerbose = true;
 
-	std::cout << netSetSecurityLevel(NET_SECURITY_PLAIN_TCP | NET_SECURITY_OPENSSL) << std::endl;	
+	std::cout << netSetSecurityLevel( NET_SECURITY_PLAIN_TCP | NET_SECURITY_OPENSSL) << std::endl;	
 	std::cout << netSetReconnectLimit ( 10 ) << std::endl;
 	std::cout << netSetReconnectInterval ( 500 ) << std::endl;
 	std::cout << netSetPathToPublicKey ( "server_pubkey.pem" ) << std::endl;

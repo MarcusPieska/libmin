@@ -17,8 +17,8 @@ void Server::Start (int inject)
 	bool bVerbose = true;
 
 	m_inject = inject;
-
-	std::cout << netSetSecurityLevel (NET_SECURITY_PLAIN_TCP | NET_SECURITY_OPENSSL) << std::endl;	
+	
+	std::cout << netSetSecurityLevel ( NET_SECURITY_PLAIN_TCP | NET_SECURITY_OPENSSL ) << std::endl;
 	std::cout << netSetReconnectLimit ( 10 ) << std::endl;
 	std::cout << netSetPathToPublicKey ( "server_pubkey.pem" ) << std::endl;
 	std::cout << netSetPathToPrivateKey ( "server_private.pem" ) << std::endl;
