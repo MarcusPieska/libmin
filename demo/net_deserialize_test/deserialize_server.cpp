@@ -74,6 +74,22 @@ int Server::BuildTestBuffer( int test_id )
 		break;
 	};
 
+	// Hard test example #1:
+	//  packets: |------|------|------|------|------|------|..
+	//  events:  |AAAAAB|BBBBBB|CCCCCC|CDDDDD|DDEEEE|EEEEFF|..
+	//  event sz:  1496, 1504, 1512, 1520, 1528, 1536, 1544, 1552 - generated test events close to packet width
+	//  pkt pkt sz  consume  recv buf  deserial
+	//  #1  1500    1496     4         A, 1496
+	//  #2  1500    1500     0         B, 1504
+	//  #3  1500       0     1500      
+	//  #4  1500      12     1448      C, 1512 = 1500+12
+	//  #5  1500      72     1428      D, 1520 = 1448+72
+	//  #5  1500     100     1400      E, 1528 = 1428+100
+	// notes:
+	//  consume  = bytes consumed from current pkt to complete event
+	//  recv buf = remainder after deserialized events
+	//  deserial = events retrieved by consuming previous recv buf plus any consumed this pkt to complete event
+
 	int event_sz = test_start_sz;
 	int header_sz = Event::staticSerializedHeaderSize();
 	int payload_sz;
