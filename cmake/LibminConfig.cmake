@@ -488,33 +488,23 @@ function( _INSTALL )
 
   file ( MAKE_DIRECTORY "${_INSTALL_DESTINATION}/" )
 
-  if ( WIN32 )      
-      # Windows - copy to desintation at post-build      
-      foreach (_file ${_INSTALL_FILES} )	
-          get_filename_component ( _path "${_file}" DIRECTORY )               
-          if ( "${_path}" STREQUAL "" )		   
-            set ( _fullpath "${_INSTALL_SOURCE}${_file}")            
-          else ()
-            set ( _fullpath "${_file}" )            
-          endif()
-          message ( STATUS "Install: ${_fullpath} -> ${_INSTALL_DESTINATION}" )
-          add_custom_command(
-             TARGET ${PROJNAME} POST_BUILD
-             COMMAND ${CMAKE_COMMAND} -E copy ${_fullpath} ${_INSTALL_DESTINATION}
-          )                   
- 	      list ( APPEND OUT_LIST "${_fullpath}" )
-      endforeach()    
-  else ()
-      # Linux 
-      if ( _INSTALL_SOURCE )	   
-	    foreach ( _file ${_INSTALL_FILES} )
-             list ( APPEND OUT_LIST "${_INSTALL_SOURCE}${_file}" )
-        endforeach()
-      else()
-	     list ( APPEND OUT_LIST ${_INSTALL_FILES} )
-      endif() 
-      install ( FILES ${OUT_LIST} DESTINATION ${_INSTALL_DESTINATION} )
-  endif( )
+  # Win & Linux
+  # copy to desintation at post-build (detects file changes)
+  foreach (_file ${_INSTALL_FILES} )	
+    get_filename_component ( _path "${_file}" DIRECTORY )               
+    if ( "${_path}" STREQUAL "" )		   
+    set ( _fullpath "${_INSTALL_SOURCE}${_file}")            
+    else ()
+    set ( _fullpath "${_file}" )            
+    endif()
+    message ( STATUS "Install: ${_fullpath} -> ${_INSTALL_DESTINATION}" )
+    add_custom_command(
+        TARGET ${PROJNAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy ${_fullpath} ${_INSTALL_DESTINATION}
+    )                   
+ 	list ( APPEND OUT_LIST "${_fullpath}" )
+  endforeach()    
+
   set ( ${_INSTALL_OUTPUT} ${OUT_LIST} PARENT_SCOPE )
    
 endfunction()
