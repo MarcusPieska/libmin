@@ -205,8 +205,9 @@ private: // Functions
 	int netSocketAccept ( int sock_i,  SOCKET& tcp_sock, netIP& cli_ip, netPort& cli_port );	
 	int netSocketRecv ( int sock_i, char* buf, int buflen, int& recvlen); 
 	bool netSocketIsConnected ( int sock_i );
-	bool netSocketSetForRead ( fd_set* sockSet, int sock_i );
-	int netSocketSelectRead ( fd_set* sockSet );
+	bool netSocketIsSelected ( fd_set* sockSet, int sock_i );
+	int netSocketSelect ( fd_set* sockReadSet, fd_set* sockWriteSet );
+	void netSendResidualEvent ( int sock_i );
 
 	// Short helpers, used to simplify the program elsewhere
 	void sleep_ms ( int time_ms );

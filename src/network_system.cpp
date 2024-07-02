@@ -817,12 +817,13 @@ void NetworkSystem::netServerCheckConnectionHandshakes ( )
 void NetworkSystem::netServerProcessIO ( )
 {
 	TRACE_ENTER ( (__func__) );
-	fd_set sockSet;
-	int rcv_events = netSocketSelectRead ( &sockSet );
+	fd_set sockReadSet;
+	fd_set sockWriteSet;
+	int rcv_events = netSocketSelect ( &sockReadSet, &sockWriteSet );
 	NET_PERF_PUSH ( "findsocks" );
 	for ( int sock_i = 0; sock_i < (int) m_socks.size ( ); sock_i++ ) { 
 		NetSock& s = m_socks[ sock_i ];
-		if ( netSocketSetForRead ( &sockSet, sock_i ) ) {
+		if ( netSocketIsSelected ( &sockReadSet, sock_i ) ) {
 			if ( s.src.type == NTYPE_ANY ) { // Listen for TCP connections on socket
 				netServerAcceptClient ( sock_i );
 			} else {
@@ -831,6 +832,9 @@ void NetworkSystem::netServerProcessIO ( )
 				}
 				netReceiveData(sock_i);
 			}
+		}
+		if ( netSocketIsSelected ( &sockWriteSet, sock_i ) ) {
+			netSendResidualEvent( sock_i );
 		}
 	}
 	NET_PERF_POP ( );
@@ -1100,16 +1104,20 @@ void NetworkSystem::netClientCheckConnectionHandshakes ( )
 void NetworkSystem::netClientProcessIO ( )
 {
 	TRACE_ENTER ( (__func__) );
-	fd_set sockSet;
-	int rcv_events = netSocketSelectRead ( &sockSet );
+	fd_set sockReadSet;
+	fd_set sockWriteSet;
+	int rcv_events = netSocketSelect ( &sockReadSet, &sockWriteSet );
 	NET_PERF_PUSH ( "findsocks" );
 	for ( int sock_i = 0; sock_i < (int) m_socks.size ( ); sock_i++ ) { 
-		if ( netSocketSetForRead ( &sockSet, sock_i ) ) {
+		if ( netSocketIsSelected ( &sockReadSet, sock_i ) ) {
 			NetSock& s = m_socks[ sock_i ];
 			if ( s.security & NET_SECURITY_OPENSSL && s.state == STATE_SSL_HANDSHAKE ) {
 				netClientConnectSSL ( sock_i ); // This call is LESS important than the other
 			}
 			netReceiveData(sock_i);
+		}
+		if ( netSocketIsSelected ( &sockWriteSet, sock_i ) ) {
+			netSendResidualEvent( sock_i );
 		}
 	}
 	NET_PERF_POP ( );
@@ -1907,6 +1915,26 @@ bool NetworkSystem::netCheckError ( int result, int sock_i )
 	return true; // TODO: Check this; treat as benign error if there is a tail to send
 }
 
+void NetworkSystem::netSendResidualEvent ( int sock_i )
+{
+	NetSock& s = m_socks[ sock_i ];
+	int remaining = s.txPktSize - s.txSoFar;
+	int result = send ( s.socket, s.txBuf + s.txSoFar, remaining, 0 ); // TCP/IP
+	netPrintf ( PRINT_ERROR, "2 Tail TX: %d %d", result, remaining );
+	// std::cin.get();
+	if ( result > 0 ) {
+		s.txSoFar += result;
+		if ( result != remaining ) {
+			netPrintf ( PRINT_ERROR, "2 Tail TX: %d ?= %d (%d)", result, remaining, s.txSoFar );
+			// std::cin.get();
+		} else {
+			netPrintf ( PRINT_ERROR, "2 Partial TX done!" );
+			// std::cin.get();
+			s.txSoFar = s.txPktSize = 0;
+		} 
+	} 
+}
+
 bool NetworkSystem::netSend ( Event& e, int sock_i )
 {
 	TRACE_ENTER ( (__func__) );
@@ -1917,6 +1945,11 @@ bool NetworkSystem::netSend ( Event& e, int sock_i )
 			return false;
 		}
 	}
+	if ( m_socks[ sock_i ].txSoFar > 0 ) {
+		TRACE_EXIT ( (__func__) );
+		return false;
+	}
+	
 	int result;
 	e.rescope ( "nets" );
 	if ( e.mData == 0x0 ) { 
@@ -1932,7 +1965,6 @@ bool NetworkSystem::netSend ( Event& e, int sock_i )
 	NetSock& s = m_socks[ sock_i ];
 	if ( m_socks[ sock_i ].mode == NET_TCP ) { // Send over socket
 		if ( s.security == NET_SECURITY_PLAIN_TCP || s.state < STATE_SSL_HANDSHAKE ) {
-			another_tx:
 			if ( s.txSoFar == 0 ) {
 				result = send ( s.socket, buf, len, 0 ); // TCP/IP
 				if ( result > 0 && result != len ) {
@@ -1940,30 +1972,12 @@ bool NetworkSystem::netSend ( Event& e, int sock_i )
 					s.txPktSize = len;
 					memcpy ( s.txBuf, buf, len );
 					s.txBuf[ len ] = '\0';
-					netPrintf ( PRINT_ERROR, "Partial TX: %d < %d (%d)", result, len, s.txSoFar );
+					netPrintf ( PRINT_ERROR, "1 Partial TX: %d < %d (%d)", result, len, s.txSoFar );
 					// std::cin.get();
 					return true;
 				}
 			} else {
-				int remaining = s.txPktSize - s.txSoFar;
-				result = send ( s.socket, s.txBuf + s.txSoFar, remaining, 0 ); // TCP/IP
-				netPrintf ( PRINT_ERROR, "1 Tail TX: %d %d", result, remaining );
-				// std::cin.get();
-				if ( result > 0 ) {
-					s.txSoFar += result;
-					if ( result != remaining ) {
-						netPrintf ( PRINT_ERROR, "2 Tail TX: %d ?= %d (%d)", result, remaining, s.txSoFar );
-						// std::cin.get();
-						return false;
-					} else {
-						netPrintf ( PRINT_ERROR, "Partial TX done!" );
-						// std::cin.get();
-						s.txSoFar = s.txPktSize = 0;
-						goto another_tx;
-					} 
-				} else {
-					return false;
-				}
+				return false;
 			}
 		} else {
 			#ifdef BUILD_OPENSSL
@@ -1973,7 +1987,7 @@ bool NetworkSystem::netSend ( Event& e, int sock_i )
 						return SSL_ERROR_WANT_WRITE;
 					} else {
 						str msg = netGetErrorStringSSL ( result, s.ssl );
-						netPrintf ( PRINT_ERROR, "Failed ssl write (2): Return: %d: %s", result, msg.c_str ( ) );
+						netPrintf ( PRINT_ERROR, "1 Failed ssl write (2): Return: %d: %s", result, msg.c_str ( ) );
 					}
 				}
 			#endif
@@ -2129,7 +2143,7 @@ bool NetworkSystem::netSocketIsConnected ( int sock_i )
     return so_error == 0; // Use select and result from getsockopt to check if connection is done
 }
 
-bool NetworkSystem::netSocketSetForRead ( fd_set* sockSet, int sock_i )
+bool NetworkSystem::netSocketIsSelected ( fd_set* sockSet, int sock_i )
 {
 	NetSock& s = m_socks[ sock_i ];
 	if ( s.security == NET_SECURITY_PLAIN_TCP || s.state < STATE_SSL_HANDSHAKE ) { 
@@ -2145,7 +2159,7 @@ bool NetworkSystem::netSocketSetForRead ( fd_set* sockSet, int sock_i )
 	return false;
 }
 
-int NetworkSystem::netSocketSelectRead ( fd_set* sockSet ) 
+int NetworkSystem::netSocketSelect ( fd_set* sockReadSet, fd_set* sockWriteSet ) 
 {
 	TRACE_ENTER ( (__func__) );
 	if ( m_socks.size ( ) == 0 ) {
@@ -2155,17 +2169,24 @@ int NetworkSystem::netSocketSelectRead ( fd_set* sockSet )
 
 	int result, maxfd =- 1;
 	NET_PERF_PUSH ( "socklist" );
-	FD_ZERO ( sockSet );
+	FD_ZERO ( sockReadSet );
+	FD_ZERO ( sockWriteSet );
 	for ( int n = 0; n < (int) m_socks.size ( ); n++ ) { // Get all sockets that are Enabled or Connected
 		NetSock& s = m_socks[ n ];
 		if ( s.state != STATE_NONE && s.state != STATE_TERMINATED && s.state != STATE_FAILED ) {
 			if ( s.security == NET_SECURITY_PLAIN_TCP || s.state < STATE_SSL_HANDSHAKE ) { 
-				FD_SET ( s.socket, sockSet );
+				FD_SET ( s.socket, sockReadSet );
+				if ( s.txPktSize > 0 ) {
+					FD_SET ( s.socket, sockWriteSet );
+				}
 				if ( (int) s.socket > maxfd ) maxfd = s.socket;
 			} else { 
 				#ifdef BUILD_OPENSSL
 					int fd = SSL_get_fd ( s.ssl );
-					FD_SET ( fd, sockSet );	
+					FD_SET ( fd, sockReadSet );	
+					if ( s.txPktSize > 0 ) {
+						FD_SET ( fd, sockWriteSet );	
+					}
 					if ( (int) fd > maxfd ) maxfd = fd;
 				#endif
 			}
@@ -2182,7 +2203,7 @@ int NetworkSystem::netSocketSelectRead ( fd_set* sockSet )
 	timeval tv;
     tv.tv_sec = m_rcvSelectTimout.tv_sec;
 	tv.tv_usec = m_rcvSelectTimout.tv_usec;
-	result = select ( maxfd, sockSet, NULL, NULL, &tv ); // Select all sockets that have changed
+	result = select ( maxfd, sockReadSet, sockWriteSet, NULL, &tv ); // Select all sockets that have changed
 	NET_PERF_POP ( );
 	TRACE_EXIT ( (__func__) );
 	return result;
