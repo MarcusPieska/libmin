@@ -1189,7 +1189,10 @@ int NetworkSystem::netNonFatalErrorSSL ( int sock, int ret )
 {
 	TRACE_ENTER ( (__func__) );
 	int err = SSL_get_error ( m_socks [ sock ].ssl, ret ), code;
-	if ( err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_WRITE ) {
+	if ( err == SSL_ERROR_WANT_READ ) {
+		TRACE_EXIT ( (__func__) );
+		return 2;	// ret value to use for non-fatal want read/write
+	} else if ( err == SSL_ERROR_WANT_WRITE ) {
 		TRACE_EXIT ( (__func__) );
 		return 2;	// ret value to use for non-fatal want read/write
 	}
@@ -1918,18 +1921,22 @@ bool NetworkSystem::netCheckError ( int result, int sock_i )
 void NetworkSystem::netSendResidualEvent ( int sock_i )
 {
 	NetSock& s = m_socks[ sock_i ];
-	int remaining = s.txPktSize - s.txSoFar;
-	int result = send ( s.socket, s.txBuf + s.txSoFar, remaining, 0 ); // TCP/IP
+	int remaining = s.txPktSize - s.txSoFar, result;
+	if ( s.security == NET_SECURITY_PLAIN_TCP || s.state < STATE_SSL_HANDSHAKE ) {
+		result = send ( s.socket, s.txBuf + s.txSoFar, remaining, 0 ); // TCP/IP
+	} else {
+		s.txSoFar = 0;
+		return;
+		//result = SSL_write ( s.ssl, s.txBuf + s.txSoFar, remaining );
+	}
+	
 	netPrintf ( PRINT_ERROR, "2 Tail TX: %d %d", result, remaining );
-	// std::cin.get();
 	if ( result > 0 ) {
 		s.txSoFar += result;
 		if ( result != remaining ) {
 			netPrintf ( PRINT_ERROR, "2 Tail TX: %d ?= %d (%d)", result, remaining, s.txSoFar );
-			// std::cin.get();
 		} else {
 			netPrintf ( PRINT_ERROR, "2 Partial TX done!" );
-			// std::cin.get();
 			s.txSoFar = s.txPktSize = 0;
 		} 
 	} 
@@ -1965,30 +1972,39 @@ bool NetworkSystem::netSend ( Event& e, int sock_i )
 	NetSock& s = m_socks[ sock_i ];
 	if ( m_socks[ sock_i ].mode == NET_TCP ) { // Send over socket
 		if ( s.security == NET_SECURITY_PLAIN_TCP || s.state < STATE_SSL_HANDSHAKE ) {
-			if ( s.txSoFar == 0 ) {
-				result = send ( s.socket, buf, len, 0 ); // TCP/IP
-				if ( result > 0 && result != len ) {
-					s.txSoFar = result;
-					s.txPktSize = len;
-					memcpy ( s.txBuf, buf, len );
-					s.txBuf[ len ] = '\0';
-					netPrintf ( PRINT_ERROR, "1 Partial TX: %d < %d (%d)", result, len, s.txSoFar );
-					// std::cin.get();
-					return true;
-				}
-			} else {
-				return false;
+			result = send ( s.socket, buf, len, 0 ); // TCP/IP
+			if ( result > 0 && result != len ) {
+				s.txSoFar = result;
+				s.txPktSize = len;
+				memcpy ( s.txBuf, buf, len );
+				s.txBuf[ len ] = '\0';
+				netPrintf ( PRINT_ERROR, "1 Partial TX: %d < %d (%d)", result, len, s.txSoFar );
+				// std::cin.get();
+				return true;
 			}
 		} else {
 			#ifdef BUILD_OPENSSL
-				if ( ( result = SSL_write ( s.ssl, buf, len ) ) <= 0 ) {	
+				result = SSL_write ( s.ssl, buf, len );
+				if ( result <= 0 ) {	
 					if ( netNonFatalErrorSSL ( sock_i, result ) ) { 
+						str msg = netGetErrorStringSSL ( result, s.ssl );
+						s.txSoFar = 1;
+						netPrintf ( PRINT_ERROR, "Non fatal SSL error: Return: %d: %s", result, msg.c_str ( ) );
 						TRACE_EXIT ( (__func__) );
+						return false;
 						return SSL_ERROR_WANT_WRITE;
 					} else {
 						str msg = netGetErrorStringSSL ( result, s.ssl );
 						netPrintf ( PRINT_ERROR, "1 Failed ssl write (2): Return: %d: %s", result, msg.c_str ( ) );
 					}
+				} else if ( result < len ) {
+					s.txSoFar = result;
+					s.txPktSize = len;
+					memcpy ( s.txBuf, buf, len );
+					s.txBuf[ len ] = '\0';
+					netPrintf ( PRINT_ERROR, "1 Partial TX: %d < %d (%d)", result, len, s.txSoFar );
+					std::cin.get();
+					return true;
 				}
 			#endif
 		}  

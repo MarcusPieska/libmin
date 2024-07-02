@@ -85,7 +85,7 @@ void NDClient::Start ( str srv_addr )
 	m_txPkt.seq_nr = 1;
 	m_pktLimit = 100000;
 
-	if ( 1 ) {
+	if ( 0 ) {
 		std::cout << netSetSecurityLevel ( NET_SECURITY_PLAIN_TCP ) << std::endl;
 		std::cout << netSetReconnectLimit ( 10 ) << std::endl;
 		std::cout << netSetReconnectInterval ( 500 ) << std::endl;
@@ -209,9 +209,9 @@ void NDClient::SendPacket ( )
 		e.attachBuf ( (char*)&m_txPkt, m_pktSize + sizeof(int) );
 		outcome = netSend ( e );
 		if ( outcome ) {
-			m_txPkt.seq_nr++;
 			fprintf ( m_flowTrace, "%.3f:%u:%u\n", GetUpTime ( ), m_txPkt.seq_nr, m_pktSize );
 			fflush ( m_flowTrace );
+			m_txPkt.seq_nr++;
 		}
 	}
 	std::cout << "#==> Burst end <========================================================#" << std::endl;
