@@ -86,10 +86,10 @@ if "1" in steps_to_run or "topo" in steps_to_run:
 	execute_command("ip netns exec emu-h2 ifconfig h2-dev-r1 netmask 255.255.255.0")
 
 	print("\n*** Setting up TC-Netem on interfaces")
-	execute_command("ip netns exec emu-h1 tc qdisc replace dev h1-dev-r1 root netem rate 50mbit delay 10ms limit 500 loss 0.0")
-	execute_command("ip netns exec emu-r1 tc qdisc replace dev r1-dev-h1 root netem rate 50mbit delay 10ms limit 500 loss 0.0")
-	execute_command("ip netns exec emu-r1 tc qdisc replace dev r1-dev-h2 root netem rate 50mbit delay 10ms limit 500 loss 0.0")
-	execute_command("ip netns exec emu-h2 tc qdisc replace dev h2-dev-r1 root netem rate 50mbit delay 10ms limit 500 loss 0.0")
+	execute_command("ip netns exec emu-h1 tc qdisc replace dev h1-dev-r1 root netem rate 10mbit delay 10ms limit 500 loss 0.0")
+	execute_command("ip netns exec emu-r1 tc qdisc replace dev r1-dev-h1 root netem rate 10mbit delay 10ms limit 500 loss 0.0")
+	execute_command("ip netns exec emu-r1 tc qdisc replace dev r1-dev-h2 root netem rate 10mbit delay 10ms limit 500 loss 0.0")
+	execute_command("ip netns exec emu-h2 tc qdisc replace dev h2-dev-r1 root netem rate 10mbit delay 10ms limit 500 loss 0.0")
 
 if "2" in steps_to_run or "rotue" in steps_to_run:
 	print("\n*** Spawning new routing")

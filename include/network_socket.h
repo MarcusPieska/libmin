@@ -125,6 +125,11 @@
 		int 				reconnectBudget; 	// remaining allowed reconnect attempts
 		TimeX 				lastStateChange;    // for tracking when timeouts should occur
 		
+		char* txBuf;
+		int txBufLimit;
+		int txPktSize;
+		int txSoFar;
+		
 		std::string srvAddr;
 		int srvPort;
 		

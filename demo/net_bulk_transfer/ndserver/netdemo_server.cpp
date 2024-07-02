@@ -80,12 +80,17 @@ void NDServer::Start ()
 	m_pktSize = init_buf ( m_refPkt.buf, PKT_SIZE ) + sizeof ( int );
 	m_refPkt.seq_nr = 1;
 
-	std::cout << netSetSecurityLevel ( NET_SECURITY_PLAIN_TCP | NET_SECURITY_OPENSSL ) << std::endl;
-	std::cout << netSetReconnectLimit ( 10 ) << std::endl;
-	std::cout << netSetPathToPublicKey ( "/home/w/Downloads/libmin/src/assets/server-server.pem" ) << std::endl;
-	std::cout << netSetPathToPrivateKey ( "/home/w/Downloads/libmin/src/assets/server.key" ) << std::endl;
-	std::cout << netSetPathToCertDir ( "/etc/ssl/certs" ) << std::endl;
-	std::cout << netSetPathToCertFile ( "/etc/ssl/certs/ca-certificates.crt" ) << std::endl;
+	if ( 1 ) {
+		std::cout << netSetSecurityLevel ( NET_SECURITY_PLAIN_TCP ) << std::endl;
+		std::cout << netSetReconnectLimit ( 10 ) << std::endl;
+	} else {
+		std::cout << netSetSecurityLevel ( NET_SECURITY_PLAIN_TCP | NET_SECURITY_OPENSSL ) << std::endl;
+		std::cout << netSetReconnectLimit ( 10 ) << std::endl;
+		std::cout << netSetPathToPublicKey ( "/home/w/Downloads/libmin/src/assets/server-server.pem" ) << std::endl;
+		std::cout << netSetPathToPrivateKey ( "/home/w/Downloads/libmin/src/assets/server.key" ) << std::endl;
+		std::cout << netSetPathToCertDir ( "/etc/ssl/certs" ) << std::endl;
+		std::cout << netSetPathToCertFile ( "/etc/ssl/certs/ca-certificates.crt" ) << std::endl;
+	}
 
 	// start networking
 	netInitialize();
@@ -145,14 +150,17 @@ int NDServer::Process ( Event& e )
 
 	switch ( e.getName ( ) ) { // Process Application events
 	case 'cRqs': 
-		int pkSize = e.getInt();
-		e.getBuf ( (char*) &m_rxPkt, pkSize );
-		int outcome = memcmp ( &m_refPkt, &m_rxPkt, pkSize );
+		int pktSize = e.getInt ( ) + sizeof( int );
+		e.getBuf ( (char*) &m_rxPkt, pktSize );
+		int outcome = memcmp ( &m_refPkt, &m_rxPkt, pktSize );
 		m_refPkt.seq_nr++;
-		fprintf ( m_flowTrace, "%.3f:%u:%u:%d\n", GetUpTime ( ), m_rxPkt.seq_nr, pkSize, outcome );
+		fprintf ( m_flowTrace, "%.3f:%u:%u:o:%d\n", GetUpTime ( ), m_rxPkt.seq_nr, pktSize, outcome );
 		fflush ( m_flowTrace );
 		if ( outcome != 0 ) {
-			std::cout << m_rxPkt.buf << std::endl;
+			std::cout << "\n=========================================== 1\n" << std::endl;
+			std::cout.write( m_refPkt.buf, pktSize );
+			std::cout << "\n===========================================\n" << std::endl;
+			std::cin.get();
 		}
 		netPrintf ( PRINT_VERBOSE, "Received event: %d, SEQ-%d", e.getSerializedLength(), m_rxPkt.seq_nr );
 		return 1;

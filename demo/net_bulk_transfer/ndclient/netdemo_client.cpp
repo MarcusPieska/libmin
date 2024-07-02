@@ -83,13 +83,19 @@ void NDClient::Start ( str srv_addr )
 	m_flowTrace = setup_trace ( "../tcp-app-tx-flow" );
 	m_pktSize = init_buf( m_txPkt.buf, PKT_SIZE );
 	m_txPkt.seq_nr = 1;
-	m_pktLimit = 1000;
+	m_pktLimit = 100000;
 
-	std::cout << netSetSecurityLevel ( NET_SECURITY_PLAIN_TCP | NET_SECURITY_OPENSSL ) << std::endl;
-	std::cout << netSetReconnectLimit ( 10 ) << std::endl;
-	std::cout << netSetReconnectInterval ( 500 ) << std::endl;
-	std::cout << netSetPathToPublicKey ( "/home/w/Downloads/libmin/src/assets/server-client.pem" ) << std::endl;
-
+	if ( 1 ) {
+		std::cout << netSetSecurityLevel ( NET_SECURITY_PLAIN_TCP ) << std::endl;
+		std::cout << netSetReconnectLimit ( 10 ) << std::endl;
+		std::cout << netSetReconnectInterval ( 500 ) << std::endl;
+	} else {
+		std::cout << netSetSecurityLevel ( NET_SECURITY_PLAIN_TCP | NET_SECURITY_OPENSSL ) << std::endl;
+		std::cout << netSetReconnectLimit ( 10 ) << std::endl;
+		std::cout << netSetReconnectInterval ( 500 ) << std::endl;
+		std::cout << netSetPathToPublicKey ( "/home/w/Downloads/libmin/src/assets/server-client.pem" ) << std::endl;
+	}
+	
 	// start timer
 	m_currtime.SetTimeNSec ( );	
 	m_lasttime = m_currtime;
@@ -174,11 +180,8 @@ int NDClient::Process ( Event& e )
 int NDClient::Run ()
 {
 	m_currtime.SetTimeNSec();	
-
-	// demo app - request the words for a random number every 2 secs
-	//
 	float elapsed_sec = m_currtime.GetElapsedSec ( m_lasttime );
-	if ( elapsed_sec >= 0.0 ) {
+	if ( elapsed_sec >= 0.5 ) {
 		m_lasttime = m_currtime;
 		if ( netIsConnectComplete ( m_sock ) ) {	
 			m_hasConnected = true;		
@@ -188,8 +191,6 @@ int NDClient::Run ()
 			m_hasConnected = true;	
 		}
 	}
-
-	// process event queue
 	return netProcessQueue ();
 }
 
@@ -201,10 +202,11 @@ void NDClient::SendPacket ( )
 		return;
 	}
 	bool outcome = true;
+	std::cout << "#==> New burst <========================================================#" << std::endl;
 	while ( outcome && m_txPkt.seq_nr < m_pktLimit ) {
 		Event e = new_event ( m_pktSize + sizeof(int), 'app ', 'cRqs', 0, getNetPool ( ) );	
 		e.attachInt ( m_pktSize );
-		e.attachBuf ( (char*)&m_txPkt, m_pktSize );
+		e.attachBuf ( (char*)&m_txPkt, m_pktSize + sizeof(int) );
 		outcome = netSend ( e );
 		if ( outcome ) {
 			m_txPkt.seq_nr++;
@@ -212,6 +214,7 @@ void NDClient::SendPacket ( )
 			fflush ( m_flowTrace );
 		}
 	}
+	std::cout << "#==> Burst end <========================================================#" << std::endl;
 }
 
 

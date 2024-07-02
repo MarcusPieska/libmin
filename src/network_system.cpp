@@ -34,7 +34,7 @@
 	#include <openssl/x509v3.h>
 #endif
 
-#define DEBUG_STREAM				// enable this to read/write network stream to disk file
+//#define DEBUG_STREAM				// enable this to read/write network stream to disk file
 
 //----------------------------------------------------------------------------------------------------------------------
 // TRACING FUNCTIONS
@@ -800,7 +800,6 @@ void NetworkSystem::netServerCompleteConnection ( int sock_i )
 	TRACE_EXIT ( (__func__) );
 }
 
-
 void NetworkSystem::netServerCheckConnectionHandshakes ( ) 
 {
 	for ( int sock_i = 0; sock_i < (int) m_socks.size ( ); sock_i++ ) { 
@@ -1280,9 +1279,15 @@ int NetworkSystem::netAddSocket ( int side, int mode, int state, bool block, Net
 	s.ssl = 0;
 	s.bio = 0;
 
+	s.txBuf = (char*) malloc( m_recvMax ); // TODO: This is too big for a default value; use resize	
+	s.txBufLimit = m_recvMax;
+	s.txPktSize = 0;
+	s.txSoFar = 0;
+
 	int n = m_socks.size ( );
 	m_socks.push_back ( s );
 	netSocketAdd ( n );
+	
 	TRACE_EXIT ( (__func__) );
 	return n;
 }
@@ -1461,6 +1466,7 @@ void NetworkSystem::netResizeRecvBuf(int len)
 		m_recvMax = new_max;
 	}
 }
+
 void NetworkSystem::netResetRecvBuf()
 {
 	m_recvLen = 0;
@@ -1573,9 +1579,6 @@ void NetworkSystem::netDeserializeEvents(int sock_i)
 	}
 } 
 
-
-
- 
 // -- Original deserialize func (NOT CORRECT)
 //
 /* void NetworkSystem::netDeserializeEvents(int sock_i)
@@ -1901,9 +1904,8 @@ bool NetworkSystem::netCheckError ( int result, int sock_i )
 		return false;
 	}
 	TRACE_EXIT ( (__func__) );
-	return true;
+	return true; // TODO: Check this; treat as benign error if there is a tail to send
 }
-
 
 bool NetworkSystem::netSend ( Event& e, int sock_i )
 {
@@ -1930,7 +1932,39 @@ bool NetworkSystem::netSend ( Event& e, int sock_i )
 	NetSock& s = m_socks[ sock_i ];
 	if ( m_socks[ sock_i ].mode == NET_TCP ) { // Send over socket
 		if ( s.security == NET_SECURITY_PLAIN_TCP || s.state < STATE_SSL_HANDSHAKE ) {
-			result = send ( s.socket, buf, len, 0 ); // TCP/IP
+			another_tx:
+			if ( s.txSoFar == 0 ) {
+				result = send ( s.socket, buf, len, 0 ); // TCP/IP
+				if ( result > 0 && result != len ) {
+					s.txSoFar = result;
+					s.txPktSize = len;
+					memcpy ( s.txBuf, buf, len );
+					s.txBuf[ len ] = '\0';
+					netPrintf ( PRINT_ERROR, "Partial TX: %d < %d (%d)", result, len, s.txSoFar );
+					// std::cin.get();
+					return true;
+				}
+			} else {
+				int remaining = s.txPktSize - s.txSoFar;
+				result = send ( s.socket, s.txBuf + s.txSoFar, remaining, 0 ); // TCP/IP
+				netPrintf ( PRINT_ERROR, "1 Tail TX: %d %d", result, remaining );
+				// std::cin.get();
+				if ( result > 0 ) {
+					s.txSoFar += result;
+					if ( result != remaining ) {
+						netPrintf ( PRINT_ERROR, "2 Tail TX: %d ?= %d (%d)", result, remaining, s.txSoFar );
+						// std::cin.get();
+						return false;
+					} else {
+						netPrintf ( PRINT_ERROR, "Partial TX done!" );
+						// std::cin.get();
+						s.txSoFar = s.txPktSize = 0;
+						goto another_tx;
+					} 
+				} else {
+					return false;
+				}
+			}
 		} else {
 			#ifdef BUILD_OPENSSL
 				if ( ( result = SSL_write ( s.ssl, buf, len ) ) <= 0 ) {	
@@ -1939,7 +1973,7 @@ bool NetworkSystem::netSend ( Event& e, int sock_i )
 						return SSL_ERROR_WANT_WRITE;
 					} else {
 						str msg = netGetErrorStringSSL ( result, s.ssl );
-						netPrintf ( PRINT_ERROR, "Failed at ssl write (2): Returned: %d: %s", result, msg.c_str ( ) );
+						netPrintf ( PRINT_ERROR, "Failed ssl write (2): Return: %d: %s", result, msg.c_str ( ) );
 					}
 				}
 			#endif
