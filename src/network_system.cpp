@@ -1925,12 +1925,14 @@ bool NetworkSystem::netCheckError ( int result, int sock_i )
 
 void NetworkSystem::netSendResidualEvent ( int sock_i )
 {
+	TRACE_ENTER ( (__func__) );
 	NetSock& s = m_socks[ sock_i ];
 	int remaining = s.txPktSize - s.txSoFar, result;
 	if ( s.security == NET_SECURITY_PLAIN_TCP || s.state < STATE_SSL_HANDSHAKE ) {
 		result = send ( s.socket, s.txBuf + s.txSoFar, remaining, 0 ); // TCP/IP
 	} else {
 		s.txSoFar = 0;
+		TRACE_EXIT ( (__func__) );
 		return;
 		//result = SSL_write ( s.ssl, s.txBuf + s.txSoFar, remaining );
 	}
@@ -1945,6 +1947,7 @@ void NetworkSystem::netSendResidualEvent ( int sock_i )
 			s.txSoFar = s.txPktSize = 0;
 		} 
 	} 
+	TRACE_EXIT ( (__func__) );
 }
 
 bool NetworkSystem::netSend ( Event& e, int sock_i )
@@ -1985,6 +1988,11 @@ bool NetworkSystem::netSend ( Event& e, int sock_i )
 				s.txBuf[ len ] = '\0';
 				netPrintf ( PRINT_ERROR, "1 Partial TX: %d < %d (%d)", result, len, s.txSoFar );
 				// std::cin.get();
+				TRACE_EXIT ( (__func__) );
+				return true;
+			} 
+			if ( result == len ) {
+				TRACE_EXIT ( (__func__) );
 				return true;
 			}
 		} else {
@@ -2009,6 +2017,7 @@ bool NetworkSystem::netSend ( Event& e, int sock_i )
 					s.txBuf[ len ] = '\0';
 					netPrintf ( PRINT_ERROR, "1 Partial TX: %d < %d (%d)", result, len, s.txSoFar );
 					std::cin.get();
+					TRACE_EXIT ( (__func__) );
 					return true;
 				}
 			#endif
@@ -2016,6 +2025,10 @@ bool NetworkSystem::netSend ( Event& e, int sock_i )
 	} else {
 		int addr_size = sizeof( m_socks[ sock_i ].dest.addr );
 		result = sendto ( s.socket, buf, len, 0, (sockaddr*) &s.dest.addr, addr_size ); // UDP
+	}
+	if ( result <= 0 ) {
+		TRACE_EXIT ( (__func__) );
+		return false;
 	}
 	TRACE_EXIT ( (__func__) );
 	return CXSocketBlockError ( ) || netCheckError ( result, sock_i ); // Check connection
