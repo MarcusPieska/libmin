@@ -85,7 +85,7 @@ void NDClient::Start ( str srv_addr )
 	m_txPkt.seq_nr = 1;
 	m_pktLimit = 100000;
 
-	if ( 0 ) {
+	if ( 1 ) {
 		std::cout << netSetSecurityLevel ( NET_SECURITY_PLAIN_TCP ) << std::endl;
 		std::cout << netSetReconnectLimit ( 10 ) << std::endl;
 		std::cout << netSetReconnectInterval ( 500 ) << std::endl;

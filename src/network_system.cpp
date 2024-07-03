@@ -1704,34 +1704,39 @@ void NetworkSystem::netReceiveData ( int sock_i )
 {
 	TRACE_ENTER ( (__func__) );
 	NetSock& s = m_socks[ sock_i ];
-
-	// Receive input stream from TCP/IP network
-	NET_PERF_PUSH ( "recv" ); 
-	int result = netSocketRecv ( sock_i, m_packetBuf, NET_BUFSIZE-1, m_packetLen );
-	if ( result != 0 ) {
-		netReportError ( result ); // Recv failed. Report net error
-		TRACE_EXIT ( (__func__) );
-		return;
-	}
-	NET_PERF_POP ( );
-
-	#ifdef DEBUG_STREAM
-		// write TCP/IP stream to disk, with packet sizes
-		if (m_packetLen > 0) {
-			FILE* fp1 = fopen("packet_stream.raw", "ab");
-			fwrite(m_packetBuf, m_packetLen, 1, fp1);
-			fclose(fp1);
-			FILE* fp2 = fopen("packet_sizes.txt", "at");
-			fprintf(fp2, "%d\n", m_packetLen);
-			fclose(fp2);
+	int outcome = 1;
+	int count = 0;
+	while ( outcome ) {
+		NET_PERF_PUSH ( "recv" ); // Receive input stream from TCP/IP network
+		int result = netSocketRecv ( sock_i, m_packetBuf, NET_BUFSIZE-1, m_packetLen );
+		outcome = m_packetLen > 0;
+		count++;
+		if ( result != 0 ) {
+			netReportError ( result ); // Recv failed. Report net error
+			TRACE_EXIT ( (__func__) );
+			return;
 		}
-	#endif		
+		NET_PERF_POP ( );
 
-	// Deserialize events from input stream
-	if (m_packetLen > 0) {
-		netDeserializeEvents(sock_i);
+		#ifdef DEBUG_STREAM
+			if ( m_packetLen > 0 ) { // Write TCP/IP stream to disk, with packet sizes
+				FILE* fp1 = fopen ( "packet_stream.raw", "ab" );
+				fwrite ( m_packetBuf, m_packetLen, 1, fp1 );
+				fclose ( fp1 );
+				FILE* fp2 = fopen ( "packet_sizes.txt", "at" );
+				fprintf ( fp2, "%d\n", m_packetLen );
+				fclose ( fp2 );
+			}
+		#endif		
+
+		if ( m_packetLen > 0 ) { // Deserialize events from input stream
+			netDeserializeEvents ( sock_i );
+		}
 	}
-
+	if ( count > 1 ) {
+		std::cout << "-----------------> netReceiveData: " << count << std::endl;
+	}
+	
 	TRACE_EXIT ( (__func__) );	
 }
 

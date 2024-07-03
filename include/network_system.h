@@ -61,7 +61,7 @@
 #define CONN_UDP		0
 #define CONN_TCP		1
 
-#define NET_BUFSIZE			65535		// Typical UDP max packet size
+#define NET_BUFSIZE			1500		// Typical UDP max packet size
 
 #define PRINT_VERBOSE 0
 #define PRINT_VERBOSE_HS 1

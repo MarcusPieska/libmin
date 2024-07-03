@@ -80,7 +80,7 @@ void NDServer::Start ()
 	m_pktSize = init_buf ( m_refPkt.buf, PKT_SIZE ) + sizeof ( int );
 	m_refPkt.seq_nr = 1;
 
-	if ( 0 ) {
+	if ( 1 ) {
 		std::cout << netSetSecurityLevel ( NET_SECURITY_PLAIN_TCP ) << std::endl;
 		std::cout << netSetReconnectLimit ( 10 ) << std::endl;
 	} else {
