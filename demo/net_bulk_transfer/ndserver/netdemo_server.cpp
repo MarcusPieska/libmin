@@ -94,7 +94,8 @@ void NDServer::Start ()
 
 	// start networking
 	netInitialize();
-	netVerbose( bVerbose );
+	netShowVerbose ( bVerbose );
+	netShowFlow ( true );
 	
 	// start server listening
 	int srv_port = 16101;

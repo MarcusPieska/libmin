@@ -103,7 +103,8 @@ void NDClient::Start ( str srv_addr )
 
 	// start networking
 	netInitialize ( );
-	netVerbose( bVerbose );
+	netShowVerbose ( bVerbose );
+	netShowFlow ( true );
 	
 	// start client on random port
 	int cli_port = 10000 + rand ( ) % 9000;

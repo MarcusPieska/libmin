@@ -6,7 +6,6 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #include <assert.h>
-#include <poll.h>
 #include "network_system.h"
 
 #ifdef __linux__
@@ -1990,14 +1989,15 @@ bool NetworkSystem::netSend ( Event& e, int sock_i )
 			}
 		} else {
 			#ifdef BUILD_OPENSSL
-				struct pollfd pfd;
-				pfd.fd = SSL_get_fd ( s.ssl );
-				pfd.events = POLLOUT; // Check for write readiness
-				result = poll ( &pfd, 1, 0 ); // Timeout of 0 for non-blocking check
-				if ( ! ( result > 0 && ( pfd.revents & POLLOUT ) ) ) {
+				fd_set sockSet;
+				int fd = SSL_get_fd ( s.ssl );
+				FD_ZERO ( &sockSet );
+				FD_SET ( fd, &sockSet );	
+				if ( select ( fd + 1, NULL, &sockSet, NULL, NULL ) < 0 ) {
+					TRACE_EXIT ( (__func__) );
 					return false;
 				}
-			
+				
 				result = SSL_write ( s.ssl, buf, len );
 				if ( result <= 0 ) {	
 					if ( netNonFatalErrorSSL ( sock_i, result ) ) { 
