@@ -1,6 +1,4 @@
 
-
-
 #ifdef _WIN32
   #include <conio.h>
 #endif
@@ -30,6 +28,8 @@
 
 #include "netdemo_server.h"
 
+// #define FLOW_FLUSH
+
 FILE* setup_trace ( const char* trace_name ) {
   FILE* trace_ptr;
   trace_ptr = fopen (trace_name, "w");
@@ -37,7 +37,7 @@ FILE* setup_trace ( const char* trace_name ) {
   return trace_ptr;
 }
 
-int init_buf ( char* buf, const int size ) {
+int NDServer::InitBuf ( char* buf, const int size ) {
   for ( int i = 0, c = 65; i < size; i++ ) {
     if ( i == size - 1 ) {
       memset ( buf + i, '*', 1 );
@@ -54,7 +54,7 @@ int init_buf ( char* buf, const int size ) {
       memset ( buf + i, '-', 1 );
     }
   }
-  printf ( "*** Packet content:\n\n%s\n*** Size is %luB \n", buf, strlen ( buf ) );
+  netPrintf ( PRINT_VERBOSE, "*** Packet content:\n\n%s\n*** Size is %luB \n", buf, strlen ( buf ) );
   return (int)strlen ( buf );
 }
 
@@ -77,7 +77,7 @@ void NDServer::Start ()
 	bool bVerbose = true;
 	m_startTime.SetTimeNSec ( );
 	m_flowTrace = setup_trace ( "../tcp-app-rx-flow" );
-	m_pktSize = init_buf ( m_refPkt.buf, PKT_SIZE ) + sizeof ( int );
+	m_pktSize = InitBuf ( m_refPkt.buf, PKT_SIZE ) + sizeof ( int );
 	m_refPkt.seq_nr = 1;
 
 	if ( 0 ) {
@@ -101,7 +101,7 @@ void NDServer::Start ()
 	netServerStart ( srv_port );
 	netSetUserCallback ( &NetEventCallback );
 	
-	netPrintf ( PRINT_VERBOSE, "Server IP: %s", getIPStr ( getHostIP() ).c_str() );	
+	netPrintf ( PRINT_VERBOSE, "Server IP: %s", getIPStr ( getHostIP ( ) ).c_str ( ) );	
 	netPrintf ( PRINT_VERBOSE, "Listening on %d ...", srv_port );
 }
 
@@ -155,14 +155,16 @@ int NDServer::Process ( Event& e )
 		int outcome = memcmp ( &m_refPkt, &m_rxPkt, pktSize );
 		m_refPkt.seq_nr++;
 		fprintf ( m_flowTrace, "%.3f:%u:%u:o:%d\n", GetUpTime ( ), m_rxPkt.seq_nr, pktSize, outcome );
-		fflush ( m_flowTrace );
+		#ifdef FLOW_FLUSH
+			fflush ( m_flowTrace );
+		#endif	
 		if ( outcome != 0 ) {
 			std::cout << "\n=========================================== 1\n" << std::endl;
 			std::cout.write( m_refPkt.buf, pktSize );
 			std::cout << "\n===========================================\n" << std::endl;
 			std::cin.get();
 		}
-		netPrintf ( PRINT_VERBOSE, "Received event: %d, SEQ-%d", e.getSerializedLength(), m_rxPkt.seq_nr );
+		netPrintf ( PRINT_FLOW, "Received event: %d, SEQ-%d", e.getSerializedLength(), m_rxPkt.seq_nr );
 		return 1;
 		break;
 	};

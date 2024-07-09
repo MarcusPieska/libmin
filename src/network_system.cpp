@@ -41,6 +41,9 @@
 // TRACING FUNCTIONS
 //----------------------------------------------------------------------------------------------------------------------
 
+#define TRACE_FUNCTION_CALLS
+//#define TRACE_FUNCTION_FLUSH
+
 double NetworkSystem::get_time ( ) 
 {
 	TimeX current_time;
@@ -68,7 +71,9 @@ void NetworkSystem::trace_enter ( const char* function_name )
 	}
 	str pad ( m_indentCount * 2, ' ' );
 	fprintf ( m_trace, "%.9f:i:%s:%s\n", get_time ( ),  pad.c_str ( ), function_name );
-	fflush ( m_trace );
+	#ifdef TRACE_FUNCTION_FLUSH
+		fflush ( m_trace );
+	#endif
 	m_indentCount++;
 }
 
@@ -84,7 +89,9 @@ void NetworkSystem::trace_exit ( const char* function_name )
 	}
 	str pad ( m_indentCount * 2, ' ' );
 	fprintf ( m_trace, "%.9f:o:%s:%s\n", get_time ( ), pad.c_str ( ), function_name );
-	fflush ( m_trace );
+	#ifdef TRACE_FUNCTION_FLUSH
+		fflush ( m_trace );
+	#endif
 }
 
 void NetworkSystem::net_perf_push ( const char* msg )
@@ -104,8 +111,6 @@ void NetworkSystem::net_perf_pop ( )
 //----------------------------------------------------------------------------------------------------------------------
 // -> TRACING HOOKS <-
 //----------------------------------------------------------------------------------------------------------------------
-
-#define TRACE_FUNCTION_CALLS
 
 #ifdef TRACE_FUNCTION_CALLS
 	#define TRACE_SETUP(msg) this->trace_setup(msg)
@@ -407,6 +412,7 @@ NetworkSystem::NetworkSystem ( const char* trace_file_name )
 	m_pathCertFile = str("");
 	
 	m_printVerbose = true;
+	m_printFlow = false;
 	m_trace = 0;
 	m_check = 0;
 	m_indentCount = 0;
@@ -828,11 +834,11 @@ void NetworkSystem::netServerProcessIO ( )
 				if ( ( s.security & NET_SECURITY_OPENSSL ) && s.state == STATE_SSL_HANDSHAKE ) {
 					netServerAcceptSSL ( sock_i );
 				}
-				netReceiveData(sock_i);
+				netReceiveData ( sock_i );
 			}
 		}
 		if ( netSocketIsSelected ( &sockWriteSet, sock_i ) ) {
-			netSendResidualEvent( sock_i );
+			netSendResidualEvent ( sock_i );
 		}
 	}
 	NET_PERF_POP ( );
@@ -1485,6 +1491,7 @@ void NetworkSystem::netResetRecvBuf()
 
 void NetworkSystem::netDeserializeEvents(int sock_i)
 {
+	TRACE_ENTER ( (__func__) );
 	NetSock& s = m_socks[ sock_i ];
 	int header_sz = Event::staticSerializedHeaderSize();
 
@@ -1498,81 +1505,75 @@ void NetworkSystem::netDeserializeEvents(int sock_i)
 	//  recvLen   = partial length currently received (over multiple calls to this func), when 0 = start new event
 	//  recvMax   = maximum length of temp buffer, may dynamic resize for large events	
 
-	netPrintf(PRINT_VERBOSE, "PKT #%d, %d bytes.", m_packetCounter, m_packetLen);	
+	netPrintf ( PRINT_FLOW, "PKT #%d, %d bytes.", m_packetCounter, m_packetLen );	
 	
-	if (m_packetCounter == 6) {
+	if ( m_packetCounter == 6 ) {
 		bool stop = true;
 	}
 	m_packetCounter++;
 	m_packetPtr = &m_packetBuf[0];
 
-	while (m_packetLen > 0) {
+	while ( m_packetLen > 0 ) {
+		if ( m_recvLen == 0 && m_packetLen > header_sz ) { // Check for new or partial event
+			// Start of new event, retrieve total event length from encoded header
+			m_eventLen = *((int*)(m_packetPtr + Event::staticOffsetLenInfo())) + Event::staticSerializedHeaderSize ( );
 
-		// Check for new or partial event
-		if (m_recvLen == 0 && m_packetLen > header_sz) {
-
-			// Start of new event
-			// retrieve total event length from encoded header
-			m_eventLen = *((int*)(m_packetPtr + Event::staticOffsetLenInfo())) + Event::staticSerializedHeaderSize();
-
-			if (m_packetLen >= m_eventLen) {
-				// Create event
-				m_event = new_event(m_eventLen - Event::staticSerializedHeaderSize(), 0, 0, 0, m_eventPool);		// no name/target. will be set during deserialize				
-				m_event.rescope("nets");									// belongs to network now
-				m_event.setSrcSock(sock_i);								// tag event /w socket
-				m_event.setSrcIP(m_socks[sock_i].src.ipL);				// recover sender address from socket
+			if ( m_packetLen >= m_eventLen ) {
+				// Create event; no name/target. will be set during deserialize		
+				m_event = new_event ( m_eventLen - Event::staticSerializedHeaderSize ( ), 0, 0, 0, m_eventPool );				
+				m_event.rescope ( "nets" );									// belongs to network now
+				m_event.setSrcSock ( sock_i );								// tag event /w socket
+				m_event.setSrcIP( m_socks[ sock_i ].src.ipL );				// recover sender address from socket
 
 				// Deserialize directly from input buffer (for performance)
-				m_event.deserialize(m_packetPtr, m_eventLen);			// deserialize					
-				netQueueEvent(m_event);									// queue & delete				
-				netPrintf(PRINT_VERBOSE, "RX %d bytes, %s", m_eventLen, m_event.getNameStr().c_str());
-				delete_event(m_event);				
+				m_event.deserialize ( m_packetPtr, m_eventLen );		// deserialize					
+				netQueueEvent ( m_event );								// queue & delete				
+				netPrintf ( PRINT_FLOW, "RX %d bytes, %s", m_eventLen, m_event.getNameStr ( ).c_str ( ) );
+				delete_event ( m_event );				
 
 				m_packetLen -= m_eventLen;								// consume event size in bytes
 				m_packetPtr += m_eventLen;
 				m_eventLen = 0;											// reset event size (recvLen remains 0)
 
 			}
-			else {
-				// Store partial event in recv buffer	
-				netResizeRecvBuf(m_recvLen + m_packetLen);
-				memcpy(m_recvPtr, m_packetPtr, m_packetLen);			// transfer into recv buffer
+			else { // Store partial event in recv buffer	
+				netResizeRecvBuf ( m_recvLen + m_packetLen );
+				memcpy ( m_recvPtr, m_packetPtr, m_packetLen );			// transfer into recv buffer
 				m_recvPtr += m_packetLen;								// advance recv buffer
 				m_recvLen += m_packetLen;
 				m_packetPtr += m_packetLen;								// consume remaining buffer len bytes
 				m_packetLen = 0;
 			}
 
-		} else {
-			// Continuation of event. Store additional data in recv buffer
-			if (m_recvLen + m_packetLen == 65984) {
+		} else { // Continuation of event. Store additional data in recv buffer
+			if ( m_recvLen + m_packetLen == 65984 ) {
 				bool stop = true;
 			}
-			netResizeRecvBuf(m_recvLen + m_packetLen);
-			memcpy(m_recvPtr, m_packetPtr, m_packetLen);			// transfer into recv buffer
+			netResizeRecvBuf ( m_recvLen + m_packetLen );
+			memcpy ( m_recvPtr, m_packetPtr, m_packetLen );			// transfer into recv buffer
 			m_recvPtr += m_packetLen;								// advance recv buffer
 			m_recvLen += m_packetLen;
 			m_packetPtr += m_packetLen;								// consume remaining buffer len bytes
 			m_packetLen = 0;
 
-			if (m_recvLen > header_sz && m_eventLen == 0)  {
+			if ( m_recvLen > header_sz && m_eventLen == 0 )  {
 				m_eventLen = *((int*)(m_recvBuf + Event::staticOffsetLenInfo())) + Event::staticSerializedHeaderSize();				
 			}
 		}
 
 		// Check for possibly multiple complete events on recv buffer
-		while ( m_recvLen >= m_eventLen && m_eventLen > 0) {
-			// Create event
-			m_event = new_event(m_eventLen - Event::staticSerializedHeaderSize(), 0, 0, 0, m_eventPool);		// no name/target. will be set during deserialize				
-			m_event.rescope("nets");								// belongs to network now
-			m_event.setSrcSock(sock_i);								// tag event /w socket
-			m_event.setSrcIP(m_socks[sock_i].src.ipL);				// recover sender address from socket
+		while ( m_recvLen >= m_eventLen && m_eventLen > 0 ) {
+			// Create event; no name/target. will be set during deserialize	
+			m_event = new_event ( m_eventLen - Event::staticSerializedHeaderSize ( ), 0, 0, 0, m_eventPool );					
+			m_event.rescope ( "nets" );								// belongs to network now
+			m_event.setSrcSock ( sock_i );							// tag event /w socket
+			m_event.setSrcIP ( m_socks[ sock_i ].src.ipL );			// recover sender address from socket
 			
 			// Deserialize event from recv buf			
-			m_event.deserialize(m_recvBuf, m_eventLen);				// deserialize			
-			netQueueEvent(m_event);									// queue & delete				
-			netPrintf(PRINT_VERBOSE, "RX %d bytes, %s", m_eventLen, m_event.getNameStr().c_str());
-			delete_event(m_event);			
+			m_event.deserialize ( m_recvBuf, m_eventLen );			// deserialize			
+			netQueueEvent ( m_event );								// queue & delete				
+			netPrintf ( PRINT_FLOW, "RX %d bytes, %s", m_eventLen, m_event.getNameStr ( ).c_str ( ) );
+			delete_event ( m_event );			
 			
 			// Reduce recv buffer
 			m_recvLen -= m_eventLen;								// consume event bytes in recv buffer
@@ -1585,8 +1586,8 @@ void NetworkSystem::netDeserializeEvents(int sock_i)
 				m_eventLen = *((int*)(m_recvBuf + Event::staticOffsetLenInfo())) + Event::staticSerializedHeaderSize();				
 			}
 		}
-
 	}
+	TRACE_EXIT ( (__func__) );
 } 
 
 // -- Original deserialize func (NOT CORRECT)
@@ -1704,12 +1705,10 @@ void NetworkSystem::netReceiveData ( int sock_i )
 	TRACE_ENTER ( (__func__) );
 	NetSock& s = m_socks[ sock_i ];
 	int outcome = 1;
-	int count = 0;
 	while ( outcome ) {
 		NET_PERF_PUSH ( "recv" ); // Receive input stream from TCP/IP network
 		int result = netSocketRecv ( sock_i, m_packetBuf, NET_BUFSIZE-1, m_packetLen );
 		outcome = m_packetLen > 0;
-		count++;
 		if ( result != 0 ) {
 			netReportError ( result ); // Recv failed. Report net error
 			TRACE_EXIT ( (__func__) );
@@ -1732,10 +1731,6 @@ void NetworkSystem::netReceiveData ( int sock_i )
 			netDeserializeEvents ( sock_i );
 		}
 	}
-	if ( count > 1 ) {
-		std::cout << "-----------------> netReceiveData: " << count << std::endl;
-	}
-	
 	TRACE_EXIT ( (__func__) );	
 }
 
@@ -1974,7 +1969,7 @@ bool NetworkSystem::netSend ( Event& e, int sock_i )
 	e.serialize ( ); // Prepare serialized buffer
 	char* buf = e.getSerializedData ( );
 	int len = e.getSerializedLength ( );
-	netPrintf ( PRINT_VERBOSE, "TX %d bytes, %s", e.getSerializedLength ( ), e.getNameStr ( ).c_str ( ) );
+	netPrintf ( PRINT_FLOW, "TX %d bytes, %s", e.getSerializedLength ( ), e.getNameStr ( ).c_str ( ) );
 
 	NetSock& s = m_socks[ sock_i ];
 	if ( m_socks[ sock_i ].mode == NET_TCP ) { // Send over socket
@@ -1985,8 +1980,7 @@ bool NetworkSystem::netSend ( Event& e, int sock_i )
 				s.txPktSize = len;
 				memcpy ( s.txBuf, buf, len );
 				s.txBuf[ len ] = '\0';
-				netPrintf ( PRINT_ERROR, "1 Partial TX: %d < %d (%d)", result, len, s.txSoFar );
-				// std::cin.get();
+				netPrintf ( PRINT_FLOW, "1 Partial TX: %d < %d (%d)", result, len, s.txSoFar );
 				TRACE_EXIT ( (__func__) );
 				return true;
 			} 
@@ -2272,6 +2266,12 @@ str NetworkSystem::netPrintf ( int flag, const char* fmt_raw, ... )
 	switch ( flag ) {
 		case PRINT_VERBOSE:
 			if ( m_printVerbose ) {
+				msg = tag + msg;
+				dbgprintf ( msg.c_str ( ) );
+			}
+			break;
+		case PRINT_FLOW:
+			if ( m_printFlow ) {
 				msg = tag + msg;
 				dbgprintf ( msg.c_str ( ) );
 			}

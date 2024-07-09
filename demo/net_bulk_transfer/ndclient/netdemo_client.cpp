@@ -1,6 +1,4 @@
 
-
-
 #ifdef _WIN32
   #include <conio.h>
 #endif
@@ -34,6 +32,8 @@
 
 #define ENABLE_SSL
 
+// #define FLOW_FLUSH
+
 FILE* setup_trace ( const char* trace_name ) {
   FILE* trace_ptr;
   trace_ptr = fopen (trace_name, "w");
@@ -41,7 +41,7 @@ FILE* setup_trace ( const char* trace_name ) {
   return trace_ptr;
 }
 
-int init_buf ( char* buf, const int size ) {
+int NDClient::InitBuf  ( char* buf, const int size ) {
   for ( int i = 0, c = 65; i < size; i++ ) {
     if ( i == size - 1 ) {
       memset ( buf + i, '*', 1 );
@@ -58,7 +58,7 @@ int init_buf ( char* buf, const int size ) {
       memset ( buf + i, '-', 1 );
     }
   }
-  printf ( "*** Packet content:\n\n%s\n*** Size is %luB \n", buf, strlen ( buf ) );
+  netPrintf ( PRINT_VERBOSE, "*** Packet content:\n\n%s\n*** Size is %luB \n", buf, strlen ( buf ) );
   return (int)strlen ( buf );
 }
 
@@ -81,9 +81,9 @@ void NDClient::Start ( str srv_addr )
 	bool bVerbose = true;
 	m_startTime.SetTimeNSec ( );
 	m_flowTrace = setup_trace ( "../tcp-app-tx-flow" );
-	m_pktSize = init_buf( m_txPkt.buf, PKT_SIZE );
+	m_pktSize = InitBuf ( m_txPkt.buf, PKT_SIZE );
 	m_txPkt.seq_nr = 1;
-	m_pktLimit = 100000;
+	m_pktLimit = 100*1000;
 
 	if ( 0 ) {
 		std::cout << netSetSecurityLevel ( NET_SECURITY_PLAIN_TCP ) << std::endl;
@@ -110,7 +110,7 @@ void NDClient::Start ( str srv_addr )
 	netClientStart ( cli_port, srv_addr );
 	netSetUserCallback ( &NetEventCallback );
 	
-	dbgprintf ( "App. Client IP: %s", getIPStr ( getHostIP() ).c_str() );	
+	netPrintf ( PRINT_VERBOSE, "App. Client IP: %s", getIPStr ( getHostIP() ).c_str() );	
 
 	// not yet connected (see Run func)
 	m_sock = NET_NOT_CONNECTED; 
@@ -123,7 +123,7 @@ void NDClient::Reconnect ()
 	std::string serverName = "localhost";  // 192.168.1.78
 	int serverPort = 16101;
       
-	dbgprintf( "App. Connecting ..." );
+	netPrintf ( PRINT_VERBOSE, "App. Connecting ..." );
 	m_sock = netClientConnectToServer ( mSrvAddr, serverPort, false );	
 }
 
@@ -152,7 +152,7 @@ int NDClient::Process ( Event& e )
 		// Connection complete. server accepted OK.
 		int srv_sock = e.getInt ( ); // Server sock
 		int cli_sock = e.getInt ( ); // Local socket 
-		dbgprintf ( "App. Connected to: %s, %d", getSock( cli_sock )->dest.name.c_str ( ), srv_sock );
+		netPrintf ( PRINT_VERBOSE, "App. Connected to: %s, %d", getSock( cli_sock )->dest.name.c_str ( ), srv_sock );
 
 		return 1;
 	  //case 'sOkT': {
@@ -160,19 +160,19 @@ int NDClient::Process ( Event& e )
 	};
 
 	// Process Application events
-	switch (e.getName()) {
+	switch ( e.getName ( ) ) {
 	case 'sRst': { // Server send back the words
 		std::string words = e.getStr ( );
-		dbgprintf ( "App. Result from server: %s", words.c_str() );
+		netPrintf ( PRINT_VERBOSE, "App. Result from server: %s", words.c_str ( ) );
 		return 1;
 		} break;
 	case 'sFIN': { // Server shutdown unexpectedly
-		dbgprintf ( "App. Server disconnected" );
+		netPrintf ( PRINT_VERBOSE, "App. Server disconnected" );
 		return 1;
 	  } break;
 	};
 
-	dbgprintf ( "App. Unhandled message: %s", e.getNameStr ( ).c_str ( ) );
+	netPrintf ( PRINT_VERBOSE, "App. Unhandled message: %s", e.getNameStr ( ).c_str ( ) );
 	return 0;
 }
 
@@ -210,7 +210,9 @@ void NDClient::SendPacket ( )
 		outcome = netSend ( e );
 		if ( outcome ) {
 			fprintf ( m_flowTrace, "%.3f:%u:%u\n", GetUpTime ( ), m_txPkt.seq_nr, m_pktSize );
-			fflush ( m_flowTrace );
+			#ifdef FLOW_FLUSH
+				fflush ( m_flowTrace );
+			#endif	
 			m_txPkt.seq_nr++;
 		}
 	}

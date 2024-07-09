@@ -67,6 +67,7 @@
 #define PRINT_VERBOSE_HS 1
 #define PRINT_ERROR 2
 #define PRINT_ERROR_HS 3
+#define PRINT_FLOW 4
 
 // -- NOTES --
 // IP               = 20 bytes
@@ -134,11 +135,11 @@ public:
 	// Event processing
 	void netProcessEvents ( Event& e );
 	int netProcessQueue ( void );
-	void netResetRecvBuf();
-	void netResizeRecvBuf(int len);
+	void netResetRecvBuf ( );
+	void netResizeRecvBuf ( int len );
 	void netReceiveData ( int sock_i );
-	void netReceiveByInjectedBuf(int sock_i, char* buf, int buflen);
-	void netDeserializeEvents(int sock_i);
+	void netReceiveByInjectedBuf ( int sock_i, char* buf, int buflen );
+	void netDeserializeEvents ( int sock_i );
 	Event netMakeEvent ( eventStr_t name, eventStr_t sys );	
 	bool netSend ( Event& e, int sock=-1 );
 	bool netSendLiteral ( str str_lit, int sock_i );
@@ -250,8 +251,8 @@ private: // State
 	std::vector< NetSock > m_socks;
 	
 	// Event related
-	EventPool*	m_eventPool; 
-	EventQueue	m_eventQueue;
+	EventPool* m_eventPool; 
+	EventQueue m_eventQueue;
 
 	// Incoming event data
 	int	m_dataLen;
@@ -262,7 +263,7 @@ private: // State
 	int m_packetLen;
 	int m_packetCounter;
 	char* m_packetPtr;
-	char  m_packetBuf[ NET_BUFSIZE ];
+	char m_packetBuf[ NET_BUFSIZE ];
 	char* m_recvPtr;
 	char* m_recvBuf;
 	int m_recvLen, m_recvMax;
@@ -272,6 +273,7 @@ private: // State
 	int	m_check;
 	int m_indentCount;
 	bool m_printVerbose;
+	bool m_printFlow;
 	FILE* m_trace;
 	TimeX m_refTime;
 	

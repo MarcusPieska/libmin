@@ -23,6 +23,7 @@ public:
 	static int NetEventCallback ( Event& e, void* this_ptr );	
 
 private:
+	int InitBuf ( char* buf, const int size );
 	double GetUpTime ( );
 	
 	TimeX m_startTime;

@@ -26,6 +26,7 @@ public:
 	int m_hasConnected;
 
 private:
+	int InitBuf ( char* buf, const int size );
 	void SendPacket ( );
 	double GetUpTime ( );
 	
