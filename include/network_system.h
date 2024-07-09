@@ -97,7 +97,8 @@ public:
 	void netInitialize ( );
 	void netCreate ( );
 	void netDestroy ( );
-	void netVerbose ( bool v ) { m_printVerbose = v; }
+	void netShowVerbose ( bool v ) { m_printVerbose = v; }
+  void netShowFlow (bool v )	{m_printFlow = v;}
 	void netList ( bool verbose = false ); // list all connections/sockets
 	str netPrintAddr ( NetAddr adr );
 	

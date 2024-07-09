@@ -28,7 +28,7 @@
 
 #include "netdemo_server.h"
 
-// #define FLOW_FLUSH
+#define FLOW_FLUSH
 
 FILE* setup_trace ( const char* trace_name ) {
   FILE* trace_ptr;
@@ -71,10 +71,9 @@ double NDServer::GetUpTime ( )
 	return current_time.GetElapsedSec ( m_startTime );
 }
 
+
 void NDServer::Start ()
 {
-	bool bDebug = true;
-	bool bVerbose = true;
 	m_startTime.SetTimeNSec ( );
 	m_flowTrace = setup_trace ( "../tcp-app-rx-flow" );
 	m_pktSize = InitBuf ( m_refPkt.buf, PKT_SIZE ) + sizeof ( int );
@@ -92,9 +91,13 @@ void NDServer::Start ()
 		std::cout << netSetPathToCertFile ( "/etc/ssl/certs/ca-certificates.crt" ) << std::endl;
 	}
 
+
 	// start networking
 	netInitialize();
-	netVerbose( bVerbose );
+
+	bool show = true;
+	netShowVerbose( show );
+  netShowFlow ( show );
 	
 	// start server listening
 	int srv_port = 16101;
@@ -176,7 +179,9 @@ int NDServer::Process ( Event& e )
 int main ( int argc, char* argv [ ] )
 {
 	NDServer srv ( "../trace-func-call-server" );
-	srv.Start ( );
+	
+  srv.Start ( );
+
 	while ( !_kbhit ( ) ) {
 		srv.Run ( );
 	}

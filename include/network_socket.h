@@ -43,9 +43,11 @@
 		typedef int SOCKET;
     #endif
 
-	#include <openssl/bio.h>					// MP: Same cross-platform ? Tentative: Yes
-	#include <openssl/ssl.h>
-	#include <openssl/err.h>
+	#ifdef BUILD_OPENSSL
+		#include <openssl/bio.h>					// MP: Same cross-platform ? Tentative: Yes
+		#include <openssl/ssl.h>
+		#include <openssl/err.h>
+	#endif
 
 	#include "event_system.h"
 

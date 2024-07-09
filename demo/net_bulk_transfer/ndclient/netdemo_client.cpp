@@ -77,8 +77,7 @@ double NDClient::GetUpTime ( )
 void NDClient::Start ( str srv_addr )
 {
 	mSrvAddr = srv_addr;
-	bool bDebug = false;
-	bool bVerbose = true;
+
 	m_startTime.SetTimeNSec ( );
 	m_flowTrace = setup_trace ( "../tcp-app-tx-flow" );
 	m_pktSize = InitBuf ( m_txPkt.buf, PKT_SIZE );
@@ -103,7 +102,10 @@ void NDClient::Start ( str srv_addr )
 
 	// start networking
 	netInitialize ( );
-	netVerbose( bVerbose );
+	
+	bool show = true;
+	netShowVerbose( show );
+	netShowFlow ( show );
 	
 	// start client on random port
 	int cli_port = 10000 + rand ( ) % 9000;
@@ -215,6 +217,7 @@ void NDClient::SendPacket ( )
 			#endif	
 			m_txPkt.seq_nr++;
 		}
+		printf ( "%d\n", m_txPkt.seq_nr );
 	}
 	std::cout << "#==> Burst end <========================================================#" << std::endl;
 }
