@@ -6,14 +6,19 @@ import matplotlib.pyplot as plt
 #======================================================================================================================#
 
 def get_time_limits(flow_file):
-	times = []
+	times, sizes = [], []
 	with open(flow_file, "r") as ptr:
 		for line in ptr:
 			items = line.split(":") # 3.366:10:1204:o:0
 			if len(items) < 1:
 				continue
 			times.append(float(items[0]))
-	return times[0], times[-1]
+			if len(items) < 3:
+				continue
+			sizes.append(int(items[2]))
+	start, stop = times[0], times[-1]
+	print("*** Throughput: %s Mbps" % format(8 * sum(sizes) / ((stop - start) * 1.0e6), ".2f"))
+	return start, stop
 
 def get_func_times(trace_file, start, stop):
 	times, directions, funcs = [], [], []
