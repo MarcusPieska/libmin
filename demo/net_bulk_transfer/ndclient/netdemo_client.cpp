@@ -102,7 +102,7 @@ void NDClient::Start ( str srv_addr )
 
 	// start networking
 	netInitialize ( );
-	
+
 	bool show = true;
 	netShowVerbose( show );
 	netShowFlow ( show );
