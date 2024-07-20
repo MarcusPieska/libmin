@@ -1,6 +1,5 @@
 
-cmake ndserver/CMakeLists.txt -B../../../build/net_bulk_transfer/ndserver 
-make -C../../../build/net_bulk_transfer/ndserver
+cmake CMakeLists.txt -B../../../build/net_bulk_transfer
+make -C../../../build/net_bulk_transfer
 
-cmake ndclient/CMakeLists.txt -B../../../build/net_bulk_transfer/ndclient 
-make -C../../../build/net_bulk_transfer/ndclient
+

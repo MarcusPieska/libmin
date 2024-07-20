@@ -2249,8 +2249,12 @@ int NetworkSystem::netSocketSelect ( fd_set* sockReadSet, fd_set* sockWriteSet )
 
 str NetworkSystem::netPrintf ( int flag, const char* fmt_raw, ... )
 {	
-		// JUST RETURN IF VERBOSE & FLOW OFF
-
+	if ( ( flag == PRINT_VERBOSE || flag == PRINT_VERBOSE_HS ) && ! m_printVerbose ) {
+		return str("");
+	}
+	if ( flag == PRINT_FLOW && ! m_printFlow ) {
+		return str("");
+	}
 
 	str tag;
     char buffer[ 2048 ];

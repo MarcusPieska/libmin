@@ -5,7 +5,7 @@ if (NOT DEFINED WIN32)
   set (CMAKE_CXX_FLAGS "-Wno-multichar")
 endif()
 
-set(PROJNAME nd_server)
+set(PROJNAME net_bulk)
 
 Project(${PROJNAME})
 Message(STATUS "-------------------------------")
@@ -14,7 +14,7 @@ Message(STATUS "Processing Project ${PROJNAME}:")
 #####################################################################################
 # LIBMIN Bootstrap
 #
-get_filename_component ( LIBMIN_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../../" REALPATH )
+get_filename_component ( LIBMIN_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../" REALPATH )
 list( APPEND CMAKE_MODULE_PATH "${LIBMIN_ROOT}/cmake" )
 list( APPEND CMAKE_PREFIX_PATH "${LIBMIN_ROOT}/cmake" )
 
@@ -27,7 +27,7 @@ if (NOT LIBMIN_FOUND)
 
   Message ( FATAL_ERROR "
   This project requires libmin. 
-  Set LIBMIN_CMAKES to the libmin repository path for /libmin/cmake.
+  Set LIBMIN_ROOT to the libmin repository path for /libmin/cmake.
   " )
 
 else()
@@ -61,6 +61,15 @@ _REQUIRE_OPENSSL (true)
 #--- symbols in release mode
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Zi" CACHE STRING "" FORCE)
 set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} /DEBUG /OPT:REF /OPT:ICF" CACHE STRING "" FORCE)
+
+#####################################################################################
+# Asset Path
+#
+if ( NOT DEFINED ASSET_PATH ) 
+   get_filename_component ( _assets "${CMAKE_CURRENT_SOURCE_DIR}/assets" REALPATH )
+   set ( ASSET_PATH ${_assets} CACHE PATH "Full path to /assets" )   
+endif()
+add_definitions(-DASSET_PATH="${ASSET_PATH}/")
 
 #####################################################################################
 # Executable
@@ -107,10 +116,8 @@ source_group( CUDA FILES ${CUDA_FILES})
 #
 _DEFAULT_INSTALL_PATH()
 
-# *NOTE*: file COPY is at cmake-time, not compile-time. Need to replace with add_custom_command -E copy_directory (my own _COPY)
-
-#-- no assets folder for now
-# file (COPY "${CMAKE_CURRENT_SOURCE_DIR}/assets" DESTINATION ${CMAKE_INSTALL_PREFIX} )	# assets folder
+# assets folder
+file (COPY "${CMAKE_CURRENT_SOURCE_DIR}/assets" DESTINATION ${CMAKE_INSTALL_PREFIX} )
 
 if (WIN32) 
   _INSTALL ( FILES ${PACKAGE_DLLS} DESTINATION ${CMAKE_INSTALL_PREFIX} )		# DLLs

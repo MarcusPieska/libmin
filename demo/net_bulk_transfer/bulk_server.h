@@ -3,25 +3,30 @@
 #define NETDEMO_SERVER
 
 #include "network_system.h"
+#include "bulk_main.h"
 
 class Server : public NetworkSystem {
 public:		
 	Server( const char* trace_file_name = NULL ) : NetworkSystem( trace_file_name ) { }
 
 	// Networking functions
-	void Start ( );
+	void Start ( bool tcp_only );
 	int Run ( );		
 	void Close ( );
-	int Process (Event& e);
+	int Process ( Event& e );
 	static int NetEventCallback ( Event& e, void* this_ptr );	
 
 	// Demo app protocol
-	void InitWords ();
-	std::string ConvertToWords ( int num );
-	void SendWordsToClient ( std::string msg, int sock );
+	void ReceiveBulkPkt ( Event& e );
+	int InitBuf ( char* buf, const int size );
+	double GetUpTime ( );
 
 private:
-	std::vector<std::string> wordlist;
+	TimeX m_startTime;
+	int m_pktSize;
+	pkt_struct m_rxPkt;
+	pkt_struct m_refPkt;
+	FILE* m_flowTrace;
 };
 
-#endif
+#endif 

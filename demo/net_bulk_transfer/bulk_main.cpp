@@ -26,8 +26,8 @@
 	}
 #endif   
 
-#include "call_client.h"
-#include "call_server.h"
+#include "bulk_client.h"
+#include "bulk_server.h"
 
 std::string get_addr ( int argc, char** argv )
 {
@@ -64,16 +64,16 @@ int main ( int argc, char* argv [] )
 
     if ( str_exists_in_args ( argc, argv, "-s" ) || str_exists_in_args ( argc, argv, "--server" ) ) { 
         Server srv ( "../trace-func-call-server" ); 
-        srv.Start ( );
-        srv.InitWords ( );
+        srv.Start ( str_exists_in_args ( argc, argv, "--tcp" ) );
         while ( !_kbhit ( ) ) {
             srv.Run ( );
         }
         srv.Close ( );
     } else {
         Client cli ( "../trace-func-call-client" );
-        cli.Start( get_addr ( argc, argv ) );
+        cli.Start( get_addr ( argc, argv ), str_exists_in_args ( argc, argv, "--tcp" ) );
         while ( !_kbhit ( ) ) {
+
             cli.Run ( );
         }
         cli.Close ( );

@@ -1,6 +1,5 @@
 
-#include "call_client.h"
-#include <mutex>
+#include "bulk_client.h"
 
 #define ENABLE_SSL
 
@@ -9,25 +8,65 @@ int Client::NetEventCallback ( Event& e, void* this_pointer ) {
     return self->Process ( e );
 }
 
-void Client::Start ( std::string srv_addr )
+int Client::InitBuf  ( char* buf, const int size ) {
+  for ( int i = 0, c = 65; i < size; i++ ) {
+    if ( i == size - 1 ) {
+      memset ( buf + i, '*', 1 );
+      memset ( buf + i + 1, '\0', 1 );
+    }
+    else if ( i % 50 == 49 ) {
+      memset ( buf + i, '\n', 1 );
+      c++;
+    }
+    else if ( i % 10 == 9 ) {
+      memset ( buf + i, c, 1 );
+    }
+    else {
+      memset ( buf + i, '-', 1 );
+    }
+  }
+  netPrintf ( PRINT_VERBOSE, "*** Packet content:\n\n%s\n*** Size is %luB \n", buf, strlen ( buf ) );
+  return (int)strlen ( buf );
+}
+
+double Client::GetUpTime ( ) 
+{
+	TimeX current_time;
+	current_time.SetTimeNSec ( );
+	return current_time.GetElapsedSec ( m_startTime );
+}
+
+void Client::Start ( std::string srv_addr, bool tcp_only )
 {
 	m_srvAddr = srv_addr;
-	m_hasConnected = false;	
-	bool bDebug = false;
-	bool bVerbose = true;
-	int cli_port = 10000 + rand ( ) % 9000; 
+	m_startTime.SetTimeNSec ( );
+	m_flowTrace = fopen ( "../tcp-app-tx-flow", "w" );
+	m_pktSize = InitBuf ( m_txPkt.buf, PKT_SIZE );
+	m_txPkt.seq_nr = 1;
+	m_pktLimit = 100*1000;
+	m_hasConnected = false;
  
-	std::cout << netSetSecurityLevel ( NET_SECURITY_PLAIN_TCP | NET_SECURITY_OPENSSL ) << std::endl;	
-	std::cout << netSetReconnectLimit ( 10 ) << std::endl;
-	std::cout << netSetReconnectInterval ( 500 ) << std::endl;
-	std::cout << netSetPathToPublicKey ( "server_pubkey.pem" ) << std::endl;
+	if ( tcp_only ) {
+		dbgprintf ( "Using TCP only \n" );
+		std::cout << netSetSecurityLevel ( NET_SECURITY_PLAIN_TCP ) << std::endl;	
+		std::cout << netSetReconnectLimit ( 10 ) << std::endl;
+		std::cout << netSetReconnectInterval ( 500 ) << std::endl;
+	} else {
+		dbgprintf ( "Using TCP and OpenSSL \n" );
+		std::cout << netSetSecurityLevel ( NET_SECURITY_PLAIN_TCP | NET_SECURITY_OPENSSL ) << std::endl;	
+		std::cout << netSetReconnectLimit ( 10 ) << std::endl;
+		std::cout << netSetReconnectInterval ( 500 ) << std::endl;
+		std::cout << netSetPathToPublicKey ( "server_pubkey.pem" ) << std::endl;
+	}
 
 	m_currtime.SetTimeNSec ( ); // Start timer
 	m_lasttime = m_currtime;
 	m_seq = 0;
 	srand ( m_currtime.GetMSec ( ) );
 	netInitialize ( ); 
-	netShowVerbose ( bVerbose );
+	netShowFlow( false );
+	netShowVerbose( true );
+	int cli_port = 10000 + rand ( ) % 9000; 
 	netClientStart ( cli_port, srv_addr );
 	netSetUserCallback ( &NetEventCallback );
 	m_sock = NET_NOT_CONNECTED; // Not yet connected (see Run func)
@@ -80,6 +119,29 @@ int Client::Process ( Event& e )
 	return 0;
 }
 
+void Client::SendPackets ( )
+{	
+	int srv_sock = getServerSock ( m_sock );
+	if ( srv_sock == -1 ) {
+		return;
+	}
+	bool outcome = true;
+	while ( outcome && m_txPkt.seq_nr < m_pktLimit ) {
+		Event e = new_event ( m_pktSize + sizeof(int), 'app ', 'cRqs', 0, getNetPool ( ) );	
+		e.attachInt ( m_pktSize );
+		e.attachBuf ( (char*)&m_txPkt, m_pktSize + sizeof(int) );
+		outcome = netSend ( e );
+		if ( outcome ) {
+			fprintf ( m_flowTrace, "%.3f:%u:%u\n", GetUpTime ( ), m_txPkt.seq_nr, m_pktSize );
+			#ifdef FLOW_FLUSH
+				fflush ( m_flowTrace );
+			#endif	
+			m_txPkt.seq_nr++;
+		}
+		printf ( "%d\n", m_txPkt.seq_nr );
+	}
+}
+
 int Client::Run ( ) 
 {
 	m_currtime.SetTimeNSec ( );	
@@ -88,9 +150,7 @@ int Client::Run ( )
 		m_lasttime = m_currtime;
 		if ( netIsConnectComplete ( m_sock ) ) {	
 			m_hasConnected = true;		
-			int rnum = rand ( ) % 10000;
-			RequestWords ( rnum );
-			dbgprintf ( "  Requested words for: %d\n", rnum ); // If connected, make request
+			SendPackets ( );
 		} else if ( ! m_hasConnected ) {
 			Reconnect ( ); // If disconnected, try and reconnect
 			m_hasConnected = true;	
@@ -98,19 +158,3 @@ int Client::Run ( )
 	}
 	return netProcessQueue ( ); // Process event queue
 }
-
-void Client::RequestWords ( int num )
-{	
-	// Demo application protocol:
-	// cRqs - request the words for a number (c=msg from client)
-	// sRst - here is the result containing the words (s=msg from server)
-	int srv_sock = getServerSock ( m_sock ); // Create cRqs app event
-	if ( srv_sock >= 0 ) {
-		Event e = new_event ( 120, 'app ', 'cRqs', 0, getNetPool ( ) );	
-		e.attachInt ( srv_sock ); // Must always tell server which socket 
-		e.attachInt ( m_seq++ ); 		
-		e.attachInt ( num ); // Payload		
-		netSend ( e ); // Send to server
-	}
-}
-

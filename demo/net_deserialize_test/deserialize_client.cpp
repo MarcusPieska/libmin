@@ -18,43 +18,35 @@ int Client::NetEventCallback (Event& e, void* this_pointer) {
 void Client::Start (std::string srv_addr)
 {
 	mSrvAddr = srv_addr;
-	bool bDebug = false;
-	bool bVerbose = true;
-
+	
 	std::cout << netSetSecurityLevel( NET_SECURITY_PLAIN_TCP | NET_SECURITY_OPENSSL) << std::endl;	
 	std::cout << netSetReconnectLimit ( 10 ) << std::endl;
 	std::cout << netSetReconnectInterval ( 500 ) << std::endl;
 	std::cout << netSetPathToPublicKey ( "server_pubkey.pem" ) << std::endl;
 
-	// start timer
-	m_currtime.SetTimeNSec();	
+	m_currtime.SetTimeNSec ( );	// Start timer
 	m_lasttime = m_currtime;
 	mSeq = 0;
-	srand ( m_currtime.GetMSec() );
+	srand ( m_currtime.GetMSec ( ) );
 
-	// start networking
-	netInitialize();
-	netVerbose( bVerbose );
-
-	// start client on random port
-	int cli_port = 10000 + rand() % 9000;
-	netClientStart ( cli_port, srv_addr );
+	netInitialize ( ); // Start networking
+	netShowFlow ( true );
+	netShowVerbose ( true );
+	int cli_port = 10000 + rand ( ) % 9000;
+	netClientStart ( cli_port, srv_addr ); // Start client on random port
 	netSetUserCallback ( &NetEventCallback );
 	
-	dbgprintf ( "App. Client IP: %s\n", getIPStr ( getHostIP() ).c_str() );	
+	dbgprintf ( "App. Client IP: %s\n", getIPStr ( getHostIP ( ) ).c_str ( ) );	
 
 	// not yet connected (see Run func)
 	mSock = NET_NOT_CONNECTED; 
 }
 
-void Client::Reconnect ()
+void Client::Reconnect ( )
 {   
-	// reconnect to server
-	std::string serverName = "localhost";  // 192.168.1.78
 	int serverPort = 16101;
-    
 	dbgprintf ( "App. Connecting..\n" );	
-	mSock = netClientConnectToServer ( mSrvAddr, serverPort, false );	
+	mSock = netClientConnectToServer ( mSrvAddr, 16101, false );	
 }
 
 void Client::Close ()
@@ -66,10 +58,10 @@ void Client::Close ()
 int Client::Process ( Event& e )
 {
 	std::string line;
-	eventStr_t sys = e.getTarget ();
+	eventStr_t sys = e.getTarget ( );
 
 	// Check for net error events
-	if ( sys == 'net ' && e.getName()=='nerr' ) {
+	if ( sys == 'net ' && e.getName ( ) == 'nerr' ) {
 		// enable netVerbose(true) for detailed messages.
 		// application can gracefully handle specific net error codes here..		
 		int code = e.getInt ();
@@ -77,8 +69,8 @@ int Client::Process ( Event& e )
 		return 0;
 	}
 	// Process Network events
-	e.startRead ();
-	switch (e.getName()) {
+	e.startRead ( );
+	switch ( e.getName ( ) ) {
 	case 'sOkT': {
 		// Connection complete. server accepted OK.
 		int srv_sock = e.getInt();		// server sock

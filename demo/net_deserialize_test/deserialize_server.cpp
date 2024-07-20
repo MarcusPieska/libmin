@@ -5,17 +5,14 @@
 #include "network_system.h"
 #include <assert.h>
 
-int Server::NetEventCallback (Event& e, void* this_pointer) {
+int Server::NetEventCallback ( Event& e, void* this_pointer ) {
     Server* self = static_cast<Server*>(this_pointer);
     return self->Process ( e );
 }
 
 
-void Server::Start (int inject)
+void Server::Start ( int inject )
 {
-	bool bDebug = true;
-	bool bVerbose = true;
-
 	m_inject = inject;
 	
 	std::cout << netSetSecurityLevel ( NET_SECURITY_PLAIN_TCP | NET_SECURITY_OPENSSL ) << std::endl;
@@ -26,8 +23,8 @@ void Server::Start (int inject)
 	//std::cout << netSetPathToCertFile ( "/etc/ssl/certs/ca-certificates.crt" ) << std::endl;
 
 	// start networking
-	netInitialize();
-	netVerbose( bVerbose );
+	netInitialize ( );
+	netShowVerbose ( true );
 	
 	// start server listening
 	int srv_port = 16101;
@@ -37,20 +34,19 @@ void Server::Start (int inject)
 	dbgprintf ( "Server IP: %s\n", getIPStr ( getHostIP() ).c_str() );	
 	dbgprintf ( "Listening on %d..\n", srv_port );
 
-	BuildTestBuffer( m_inject );
+	BuildTestBuffer ( m_inject );
 }
 
-void Server::Close ()
+void Server::Close ( )
 {
 	
 }
 
-
 int Server::BuildTestBuffer ( int test_id )
 {
-	if (test_id < 0) return 0;
+	if ( test_id < 0 ) return 0;
 
-	if (m_testbuf != 0) free(m_testbuf);
+	if ( m_testbuf != 0 ) free ( m_testbuf );
 
 	// Test deserialization
 	// OLD code - netRecieveData,      before 6/25/2024 - will   PASS easy test, FAIL hard test.

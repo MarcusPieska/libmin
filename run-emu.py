@@ -19,11 +19,13 @@ do_server_timeout = False
 if len(sys.argv) >= 2:
   do_server_timeout = True
 
-app = "net_call_response"
-app = "net_bulk_transfer"
+app = "net_call_response/net_call"
+#app = "net_bulk_transfer/net_bulk"
+app = "net_deserialize_test/net_deserialize"
 
-paths = ["../build/%s/ndserver/nd_server" %(app), "../build/%s/ndclient/nd_client" %(app)]
-addr = ["10.0.10.1", "10.0.20.2"]
+paths = ["../build/%s" %(app), "../build/%s" %(app)]
+args = ["-s --tcp", " --tcp"]
+addrs = ["10.0.10.1", "10.0.20.2"]
 intfs = ["h2-dev-r1", "h1-dev-r1"]
 contexts = ["ip netns exec emu-h2", "ip netns exec emu-h1"]
 
@@ -35,8 +37,8 @@ for c, i in zip(contexts, intfs):
   print("Command: '%s'" %(run_command))
   os.system(run_command)
   
-for p, a, c in zip(paths, addr, contexts): 
-  run_command = "%s xterm -hold -e '%s --addr %s' &" %(c, p, a)
+for path, addr, context, arg in zip(paths, addrs, contexts, args): 
+  run_command = "%s xterm -hold -e '%s %s --addr %s' &" %(context, path, arg, addr)
   print("Running server executable in a new xterm window...\n")
   print("Command: '%s'" %(run_command))
   os.system(run_command)
