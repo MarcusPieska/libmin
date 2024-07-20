@@ -43,7 +43,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #define TRACE_FUNCTION_CALLS
-//#define TRACE_FUNCTION_FLUSH
+#define TRACE_FUNCTION_FLUSH
 
 double NetworkSystem::get_time ( ) 
 {
@@ -198,7 +198,7 @@ inline void NetworkSystem::CXSocketMakeBlock ( SOCKET sock_h, bool block )
 {
 	TRACE_ENTER ( (__func__) );
 	#ifdef _WIN32 // windows
-		unsigned long block_mode = block ? 1 : 0; 
+		unsigned long block_mode = block ? 0 : 1;			// inverted on Windows. See ioctlsocket spec.
 		ioctlsocket ( sock_h, FIONBIO, &block_mode ); // FIONBIO = non-blocking mode	
 	#else // linux
 		int flags = fcntl ( sock_h, F_GETFL, 0 ), ret;
@@ -1745,7 +1745,9 @@ void NetworkSystem::netQueueEvent ( Event& e )
 	Event eq;
 	eq = e;						// eq now owns the data
 	eq.rescope ( "nets" );		
+
 	m_eventQueue.push ( eq );	// data payload is owned by queued event
+
 	eq.bOwn = false;			// local ref no longer owns payload
 	e.bOwn = false;				// source ref no longer owns payload
 	TRACE_EXIT ( (__func__) );
@@ -1991,12 +1993,13 @@ bool NetworkSystem::netSend ( Event& e, int sock_i )
 			}
 		} else {
 			#ifdef BUILD_OPENSSL
-
+				
 				fd_set sockSet;
+				struct timeval tv = { 0, 0 };
 				int fd = SSL_get_fd ( s.ssl );
 				FD_ZERO ( &sockSet );
 				FD_SET ( fd, &sockSet );	
-				if ( select ( fd + 1, NULL, &sockSet, NULL, NULL ) < 0 ) {
+				if ( select ( fd + 1, NULL, &sockSet, NULL, &tv ) < 0 ) {
 					TRACE_EXIT ( (__func__) );
 					return false;
 				}

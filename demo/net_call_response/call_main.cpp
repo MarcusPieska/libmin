@@ -43,7 +43,7 @@ std::string get_addr ( int argc, char** argv )
 
 bool str_exists_in_args ( int argc, char** argv, const char* to_find )
 {
-    for ( int i = 1; i < argc - 1; ++i ) {;
+    for ( int i = 1; i <= argc - 1; i++ ) {
         if ( strcmp( argv[i], to_find ) == 0 ) {
             return true;
         }

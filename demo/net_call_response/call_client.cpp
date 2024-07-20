@@ -18,6 +18,7 @@ void Client::Start ( std::string srv_addr )
 	int cli_port = 10000 + rand ( ) % 9000; 
  
 	std::cout << netSetSecurityLevel ( NET_SECURITY_PLAIN_TCP | NET_SECURITY_OPENSSL ) << std::endl;	
+  //std::cout << netSetSecurityLevel ( NET_SECURITY_PLAIN_TCP ) << std::endl;	
 	std::cout << netSetReconnectLimit ( 10 ) << std::endl;
 	std::cout << netSetReconnectInterval ( 500 ) << std::endl;
 	std::cout << netSetPathToPublicKey ( "server_pubkey.pem" ) << std::endl;
@@ -28,6 +29,8 @@ void Client::Start ( std::string srv_addr )
 	srand ( m_currtime.GetMSec ( ) );
 	netInitialize ( ); 
 	netShowVerbose ( bVerbose );
+	netShowFlow( bVerbose) ;
+
 	netClientStart ( cli_port, srv_addr );
 	netSetUserCallback ( &NetEventCallback );
 	m_sock = NET_NOT_CONNECTED; // Not yet connected (see Run func)
