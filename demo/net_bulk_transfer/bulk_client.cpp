@@ -36,27 +36,37 @@ double Client::GetUpTime ( )
 	return current_time.GetElapsedSec ( m_startTime );
 }
 
-void Client::Start ( std::string srv_addr, bool tcp_only )
+void Client::Start ( std::string srv_addr,  int pkt_limit, int protocols, int error )
 {
 	m_srvAddr = srv_addr;
 	m_startTime.SetTimeNSec ( );
 	m_flowTrace = fopen ( "../tcp-app-tx-flow", "w" );
 	m_pktSize = InitBuf ( m_txPkt.buf, PKT_SIZE );
 	m_txPkt.seq_nr = 1;
-	m_pktLimit = 100*1000;
+	m_pktLimit = pkt_limit;
 	m_hasConnected = false;
  
-	if ( tcp_only ) {
+	if ( protocols == PROTOCOL_TCP_ONLY ) {
 		dbgprintf ( "Using TCP only \n" );
-		std::cout << netSetSecurityLevel ( NET_SECURITY_PLAIN_TCP ) << std::endl;	
-		std::cout << netSetReconnectLimit ( 10 ) << std::endl;
-		std::cout << netSetReconnectInterval ( 500 ) << std::endl;
+		netSetSecurityLevel ( NET_SECURITY_PLAIN_TCP );	
+		netSetReconnectLimit ( 10 );
+		netSetReconnectInterval ( 500 );
+	} else if ( protocols == PROTOCOL_SSL_ONLY ) {	
+		dbgprintf ( "Using OpenSSL only \n" );
+		netSetSecurityLevel ( NET_SECURITY_OPENSSL );	
+		netSetReconnectLimit ( 10 );
+		netSetReconnectInterval ( 500 );
+		if ( error != ERROR_MISSING_CLIENT_KEYS ) {
+			netSetPathToPublicKey ( "server_pubkey.pem" );
+		} 
 	} else {
 		dbgprintf ( "Using TCP and OpenSSL \n" );
-		std::cout << netSetSecurityLevel ( NET_SECURITY_PLAIN_TCP | NET_SECURITY_OPENSSL ) << std::endl;	
-		std::cout << netSetReconnectLimit ( 10 ) << std::endl;
-		std::cout << netSetReconnectInterval ( 500 ) << std::endl;
-		std::cout << netSetPathToPublicKey ( "server_pubkey.pem" ) << std::endl;
+		netSetSecurityLevel ( NET_SECURITY_PLAIN_TCP | NET_SECURITY_OPENSSL );	
+		netSetReconnectLimit ( 10 );
+		netSetReconnectInterval ( 500 );
+		if ( error != ERROR_MISSING_CLIENT_KEYS ) {
+			netSetPathToPublicKey ( "server_pubkey.pem" );
+		} 
 	}
 
 	m_currtime.SetTimeNSec ( ); // Start timer

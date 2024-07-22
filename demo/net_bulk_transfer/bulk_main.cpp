@@ -29,22 +29,22 @@
 #include "bulk_client.h"
 #include "bulk_server.h"
 
-std::string get_addr ( int argc, char** argv )
+std::string get_arg_val ( int argc, char** argv, const char* arg1, const char* arg2, std::string value )
 {
-    std::string addr = "127.0.0.1";
     for ( int i = 1; i < argc - 1; ++i ) {
         std::string arg = argv[i];
-        if ( arg == "--addr" || arg == "-a" ) {
-            addr = argv[++i];
+        if ( strcmp( argv[i], arg1 ) == 0 || strcmp( argv[i], arg2 ) == 0 ) {
+            value = argv[++i];
+            break;
         }
     }
-    return addr;
+    return value;
 }
 
-bool str_exists_in_args ( int argc, char** argv, const char* to_find )
+bool str_exists_in_args ( int argc, char** argv, const char* to_find1, const char* to_find2 )
 {
-    for ( int i = 1; i < argc - 1; ++i ) {;
-        if ( strcmp( argv[i], to_find ) == 0 ) {
+    for ( int i = 1; i <= argc - 1; i++ ) {
+        if ( strcmp( argv[i], to_find1 ) == 0 || strcmp( argv[i], to_find2 ) == 0 ) {
             return true;
         }
     }
@@ -62,18 +62,21 @@ int main ( int argc, char* argv [] )
     // - enable this line to see profiling:
     // PERF_INIT ( 64, true, true, true, 0, "" );	
 
-    if ( str_exists_in_args ( argc, argv, "-s" ) || str_exists_in_args ( argc, argv, "--server" ) ) { 
+	int protocols = std::stoi ( get_arg_val ( argc, argv, "--prot", "-p", "2" ) );
+	int error = std::stoi ( get_arg_val ( argc, argv, "--error", "-e", "0" ) );
+    if ( str_exists_in_args ( argc, argv, "--server", "-s" ) ) { 
         Server srv ( "../trace-func-call-server" ); 
-        srv.Start ( str_exists_in_args ( argc, argv, "--tcp" ) );
+        srv.Start ( protocols, error );
         while ( !_kbhit ( ) ) {
             srv.Run ( );
         }
         srv.Close ( );
     } else {
         Client cli ( "../trace-func-call-client" );
-        cli.Start( get_addr ( argc, argv ), str_exists_in_args ( argc, argv, "--tcp" ) );
+        std::string srv_addr = get_arg_val ( argc, argv, "--addr", "-a", "127.0.0.1" );
+        int pkt_limit = std::stoi ( get_arg_val ( argc, argv, "--limit", "-l", "100" ) );
+        cli.Start( srv_addr, pkt_limit, protocols, error );
         while ( !_kbhit ( ) ) {
-
             cli.Run ( );
         }
         cli.Close ( );

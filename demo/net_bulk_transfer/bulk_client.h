@@ -10,7 +10,7 @@ public:
 	Client( const char* trace_file_name = NULL ) : NetworkSystem( trace_file_name ) { }
 
 	// Networking functions
-	void Start ( std::string srv_addr, bool tcp_only );
+	void Start ( std::string srv_addr, int pkt_limit, int protocols, int error );
 	void Reconnect ( );
 	void Close ( );		
 	int Run ( );				

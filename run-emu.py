@@ -20,11 +20,13 @@ if len(sys.argv) >= 2:
   do_server_timeout = True
 
 app = "net_call_response/net_call"
-#app = "net_bulk_transfer/net_bulk"
-app = "net_deserialize_test/net_deserialize"
+app = "net_bulk_transfer/net_bulk"
+#app = "net_deserialize_test/net_deserialize"
 
+prot_server, error_server = 0, 0
+prot_client, error_client = 1, 0
 paths = ["../build/%s" %(app), "../build/%s" %(app)]
-args = ["-s --tcp", " --tcp"]
+args = ["-s --prot %d  --error %d" %(prot_server, error_server), "--prot %d  --error %d" %(prot_client, error_client)]
 addrs = ["10.0.10.1", "10.0.20.2"]
 intfs = ["h2-dev-r1", "h1-dev-r1"]
 contexts = ["ip netns exec emu-h2", "ip netns exec emu-h1"]

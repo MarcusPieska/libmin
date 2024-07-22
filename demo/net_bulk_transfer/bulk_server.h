@@ -10,7 +10,7 @@ public:
 	Server( const char* trace_file_name = NULL ) : NetworkSystem( trace_file_name ) { }
 
 	// Networking functions
-	void Start ( bool tcp_only );
+	void Start ( int protocols, int error );
 	int Run ( );		
 	void Close ( );
 	int Process ( Event& e );

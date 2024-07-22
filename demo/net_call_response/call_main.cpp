@@ -1,4 +1,7 @@
 
+#include <string>
+#include <iostream>
+
 #ifdef _WIN32
 	#include <conio.h>
 #endif
@@ -29,22 +32,22 @@
 #include "call_client.h"
 #include "call_server.h"
 
-std::string get_addr ( int argc, char** argv )
+std::string get_arg_val ( int argc, char** argv, const char* arg1, const char* arg2, std::string value )
 {
-    std::string addr = "127.0.0.1";
     for ( int i = 1; i < argc - 1; ++i ) {
         std::string arg = argv[i];
-        if ( arg == "--addr" || arg == "-a" ) {
-            addr = argv[++i];
+        if ( strcmp( argv[i], arg1 ) == 0 || strcmp( argv[i], arg2 ) == 0 ) {
+            value = argv[++i];
+            break;
         }
     }
-    return addr;
+    return value;
 }
 
-bool str_exists_in_args ( int argc, char** argv, const char* to_find )
+bool str_exists_in_args ( int argc, char** argv, const char* to_find1, const char* to_find2 )
 {
     for ( int i = 1; i <= argc - 1; i++ ) {
-        if ( strcmp( argv[i], to_find ) == 0 ) {
+        if ( strcmp( argv[i], to_find1 ) == 0 || strcmp( argv[i], to_find2 ) == 0 ) {
             return true;
         }
     }
@@ -62,7 +65,7 @@ int main ( int argc, char* argv [] )
     // - enable this line to see profiling:
     // PERF_INIT ( 64, true, true, true, 0, "" );	
 
-    if ( str_exists_in_args ( argc, argv, "-s" ) || str_exists_in_args ( argc, argv, "--server" ) ) { 
+    if ( str_exists_in_args ( argc, argv, "--server", "-s" ) ) { 
         Server srv ( "../trace-func-call-server" ); 
         srv.Start ( );
         srv.InitWords ( );
@@ -72,7 +75,9 @@ int main ( int argc, char* argv [] )
         srv.Close ( );
     } else {
         Client cli ( "../trace-func-call-client" );
-        cli.Start( get_addr ( argc, argv ) );
+        std::string srv_addr = get_arg_val ( argc, argv, "--addr", "-a", "127.0.0.1" );
+        int pkt_limit = std::stoi ( get_arg_val ( argc, argv, "--packets", "-p", "100" ) );
+        cli.Start( srv_addr, pkt_limit );
         while ( !_kbhit ( ) ) {
             cli.Run ( );
         }

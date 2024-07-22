@@ -36,25 +36,37 @@ double Server::GetUpTime ( )
 	return current_time.GetElapsedSec ( m_startTime );
 }
 
-void Server::Start ( bool tcp_only )
+void Server::Start ( int protocols, int error )
 {
 	m_startTime.SetTimeNSec ( );
 	m_flowTrace = fopen ( "../tcp-app-rx-flow", "w" );
 	m_pktSize = InitBuf ( m_refPkt.buf, PKT_SIZE ) + sizeof ( int );
 	m_refPkt.seq_nr = 1;
 
-	if ( tcp_only ) {
+	if ( protocols == PROTOCOL_TCP_ONLY ) {
 		dbgprintf ( "Using TCP only \n" );
-		std::cout << netSetSecurityLevel ( NET_SECURITY_PLAIN_TCP ) << std::endl;	
-		std::cout << netSetReconnectLimit ( 10 ) << std::endl;
+		netSetSecurityLevel ( NET_SECURITY_PLAIN_TCP );	
+		netSetReconnectLimit ( 10 );
+	} else if ( protocols == PROTOCOL_SSL_ONLY ) {	
+		dbgprintf ( "Using OpenSSL only \n" );
+		netSetSecurityLevel ( NET_SECURITY_OPENSSL );	
+		netSetReconnectLimit ( 10 );
+		if ( error == ERROR_MISSING_SERVER_KEYS ) {
+			netSetPathToPublicKey ( "server_pubkey.pem" );
+		} else {
+			netSetPathToPublicKey ( "server_pubkey.pem" );
+			netSetPathToPrivateKey ( "server_private.pem" );
+		}
 	} else {
 		dbgprintf ( "Using TCP and OpenSSL \n" );
-		std::cout << netSetSecurityLevel ( NET_SECURITY_PLAIN_TCP | NET_SECURITY_OPENSSL ) << std::endl;	
-		std::cout << netSetReconnectLimit ( 10 ) << std::endl;
-		std::cout << netSetPathToPublicKey ( "server_pubkey.pem" ) << std::endl;
-		std::cout << netSetPathToPrivateKey ( "server_private.pem" ) << std::endl;
-		//std::cout << netSetPathToCertDir ( "/etc/ssl/certs" ) << std::endl;
-		//std::cout << netSetPathToCertFile ( "/etc/ssl/certs/ca-certificates.crt" ) << std::endl;
+		netSetSecurityLevel ( NET_SECURITY_PLAIN_TCP | NET_SECURITY_OPENSSL );	
+		netSetReconnectLimit ( 10 );
+		if ( error == ERROR_MISSING_SERVER_KEYS ) {
+			netSetPathToPublicKey ( "server_pubkey.pem" );
+		} else {
+			netSetPathToPublicKey ( "server_pubkey.pem" );
+			netSetPathToPrivateKey ( "server_private.pem" );
+		}
 	}
 
 	netInitialize ( ); // Start networking
@@ -84,6 +96,7 @@ void Server::ReceiveBulkPkt ( Event& e )
 	int outcome = memcmp ( &m_refPkt, &m_rxPkt, pktSize );
 	m_refPkt.seq_nr++;
 	fprintf ( m_flowTrace, "%.3f:%u:%u:o:%d\n", GetUpTime ( ), m_rxPkt.seq_nr, pktSize, outcome );
+	printf ( "%d\n", m_rxPkt.seq_nr );
 	#ifdef FLOW_FLUSH
 		fflush ( m_flowTrace );
 	#endif	
