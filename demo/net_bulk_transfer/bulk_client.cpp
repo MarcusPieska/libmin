@@ -48,11 +48,13 @@ void Client::Start ( std::string srv_addr,  int pkt_limit, int protocols, int er
  
 	if ( protocols == PROTOCOL_TCP_ONLY ) {
 		dbgprintf ( "Using TCP only \n" );
+		m_srvPort = 16100; 
 		netSetSecurityLevel ( NET_SECURITY_PLAIN_TCP );	
 		netSetReconnectLimit ( 10 );
 		netSetReconnectInterval ( 500 );
 	} else if ( protocols == PROTOCOL_SSL_ONLY ) {	
 		dbgprintf ( "Using OpenSSL only \n" );
+		m_srvPort = 16101; 
 		netSetSecurityLevel ( NET_SECURITY_OPENSSL );	
 		netSetReconnectLimit ( 10 );
 		netSetReconnectInterval ( 500 );
@@ -61,6 +63,7 @@ void Client::Start ( std::string srv_addr,  int pkt_limit, int protocols, int er
 		} 
 	} else {
 		dbgprintf ( "Using TCP and OpenSSL \n" );
+		m_srvPort = 16101; 
 		netSetSecurityLevel ( NET_SECURITY_PLAIN_TCP | NET_SECURITY_OPENSSL );	
 		netSetReconnectLimit ( 10 );
 		netSetReconnectInterval ( 500 );
@@ -87,7 +90,7 @@ void Client::Start ( std::string srv_addr,  int pkt_limit, int protocols, int er
 void Client::Reconnect ( )
 {   
 	dbgprintf ( "App. Connecting..\n" );	
-	m_sock = netClientConnectToServer ( m_srvAddr, 16101, false ); // Reconnect to server	 
+	m_sock = netClientConnectToServer ( m_srvAddr, m_srvPort, false ); // Reconnect to server	 
 }
 
 void Client::Close ( )

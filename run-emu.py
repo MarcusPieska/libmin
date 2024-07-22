@@ -24,7 +24,7 @@ app = "net_bulk_transfer/net_bulk"
 #app = "net_deserialize_test/net_deserialize"
 
 prot_server, error_server = 0, 0
-prot_client, error_client = 1, 0
+prot_client, error_client = 2, 0
 paths = ["../build/%s" %(app), "../build/%s" %(app)]
 args = ["-s --prot %d  --error %d" %(prot_server, error_server), "--prot %d  --error %d" %(prot_client, error_client)]
 addrs = ["10.0.10.1", "10.0.20.2"]

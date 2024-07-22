@@ -42,9 +42,11 @@ void Server::Start ( int protocols, int error )
 	m_flowTrace = fopen ( "../tcp-app-rx-flow", "w" );
 	m_pktSize = InitBuf ( m_refPkt.buf, PKT_SIZE ) + sizeof ( int );
 	m_refPkt.seq_nr = 1;
+	int srv_port = 16101;
 
 	if ( protocols == PROTOCOL_TCP_ONLY ) {
 		dbgprintf ( "Using TCP only \n" );
+		srv_port--;
 		netSetSecurityLevel ( NET_SECURITY_PLAIN_TCP );	
 		netSetReconnectLimit ( 10 );
 	} else if ( protocols == PROTOCOL_SSL_ONLY ) {	
@@ -72,7 +74,6 @@ void Server::Start ( int protocols, int error )
 	netInitialize ( ); // Start networking
 	netShowFlow( false );
 	netShowVerbose( true );
-	int srv_port = 16101;
 	netServerStart ( srv_port ); // Start server listening
 	netSetUserCallback ( &NetEventCallback ); 
 	

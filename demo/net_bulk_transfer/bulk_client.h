@@ -25,6 +25,7 @@ public:
 private:
 	std::string m_srvAddr;
 	bool m_hasConnected;
+	int m_srvPort;
 	int m_sock; // This is my socket (local) to access the server
 	int m_seq;
 	int m_pktSize;
