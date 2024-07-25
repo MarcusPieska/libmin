@@ -18,7 +18,7 @@ public:
 	static int NetEventCallback ( Event& e, void* this_ptr );
 
 	// Demo app protocol	
-	int InitBuf ( char* buf, const int size );
+	int InitBuf ( char* buf, const int size, char main_pkt_char );
 	void SendPackets ( );
 	double GetUpTime ( );
 

@@ -3,12 +3,14 @@
 
 #define ENABLE_SSL
 
-int Client::NetEventCallback ( Event& e, void* this_pointer ) {
+int Client::NetEventCallback ( Event& e, void* this_pointer ) 
+{
     Client* self = static_cast<Client*>( this_pointer );
     return self->Process ( e );
 }
 
-int Client::InitBuf  ( char* buf, const int size ) {
+int Client::InitBuf  ( char* buf, const int size, char main_pkt_char ) 
+{
   for ( int i = 0, c = 65; i < size; i++ ) {
     if ( i == size - 1 ) {
       memset ( buf + i, '*', 1 );
@@ -22,7 +24,7 @@ int Client::InitBuf  ( char* buf, const int size ) {
       memset ( buf + i, c, 1 );
     }
     else {
-      memset ( buf + i, '-', 1 );
+      memset ( buf + i, main_pkt_char, 1 );
     }
   }
   netPrintf ( PRINT_VERBOSE, "*** Packet content:\n\n%s\n*** Size is %luB \n", buf, strlen ( buf ) );
@@ -41,10 +43,9 @@ void Client::Start ( std::string srv_addr,  int pkt_limit, int protocols, int er
 	m_srvAddr = srv_addr;
 	m_startTime.SetTimeNSec ( );
 	m_flowTrace = fopen ( "../tcp-app-tx-flow", "w" );
-	m_pktSize = InitBuf ( m_txPkt.buf, PKT_SIZE );
-	m_txPkt.seq_nr = 1;
-	m_pktLimit = pkt_limit;
 	m_hasConnected = false;
+	m_pktSize = 0;
+	m_pktLimit = pkt_limit;
  
 	if ( protocols == PROTOCOL_TCP_ONLY ) {
 		dbgprintf ( "Using TCP only \n" );
@@ -138,11 +139,18 @@ void Client::SendPackets ( )
 	if ( srv_sock == -1 ) {
 		return;
 	}
+	if ( m_pktSize == 0 ) { 
+		printf ( "*** Init state for server sock %d \n", srv_sock );
+		char main_pkt_char = ( srv_sock % 2 == 0 ) ? '-' : '=';
+		m_pktSize = InitBuf ( m_txPkt.buf, PKT_SIZE, main_pkt_char ) + sizeof(int);
+		m_txPkt.seq_nr = 1;
+	}
 	bool outcome = true;
 	while ( outcome && m_txPkt.seq_nr < m_pktLimit ) {
-		Event e = new_event ( m_pktSize + sizeof(int), 'app ', 'cRqs', 0, getNetPool ( ) );	
+		Event e = new_event ( m_pktSize + sizeof(int) * 2, 'app ', 'cRqs', 0, getNetPool ( ) );	
+		e.attachInt ( srv_sock ); // Must always tell server which socket
 		e.attachInt ( m_pktSize );
-		e.attachBuf ( (char*)&m_txPkt, m_pktSize + sizeof(int) );
+		e.attachBuf ( (char*)&m_txPkt, m_pktSize );
 		outcome = netSend ( e );
 		if ( outcome ) {
 			fprintf ( m_flowTrace, "%.3f:%u:%u\n", GetUpTime ( ), m_txPkt.seq_nr, m_pktSize );

@@ -3,12 +3,14 @@
 
 #define FLOW_FLUSH
 
-int Server::NetEventCallback ( Event& e, void* this_pointer ) {
+int Server::NetEventCallback ( Event& e, void* this_pointer ) 
+{
     Server* self = static_cast<Server*>( this_pointer );
     return self->Process ( e );
 }
 
-int Server::InitBuf ( char* buf, const int size ) {
+int Server::InitBuf ( char* buf, const int size, char main_pkt_char ) 
+{
   for ( int i = 0, c = 65; i < size; i++ ) {
     if ( i == size - 1 ) {
       memset ( buf + i, '*', 1 );
@@ -22,7 +24,7 @@ int Server::InitBuf ( char* buf, const int size ) {
       memset ( buf + i, c, 1 );
     }
     else {
-      memset ( buf + i, '-', 1 );
+      memset ( buf + i, main_pkt_char, 1 );
     }
   }
   netPrintf ( PRINT_VERBOSE, "*** Packet content:\n\n%s\n*** Size is %luB \n", buf, strlen ( buf ) );
@@ -40,8 +42,7 @@ void Server::Start ( int protocols, int error )
 {
 	m_startTime.SetTimeNSec ( );
 	m_flowTrace = fopen ( "../tcp-app-rx-flow", "w" );
-	m_pktSize = InitBuf ( m_refPkt.buf, PKT_SIZE ) + sizeof ( int );
-	m_refPkt.seq_nr = 1;
+	pkt_struct client_data;
 	int srv_port = 16101;
 
 	if ( protocols == PROTOCOL_TCP_ONLY ) {
@@ -92,18 +93,29 @@ int Server::Run ( )
 
 void Server::ReceiveBulkPkt ( Event& e )
 {
-	int pktSize = e.getInt ( ) + sizeof( int );
+	int sock = e.getInt ( ); // Which client 
+	int pktSize = e.getInt ( );
+	if ( m_clientData.find( sock ) == m_clientData.end ( ) ) {
+		printf ( "*** Init state for server sock %d \n", sock );
+		char main_pkt_char = ( sock % 2 == 0 ) ? '-' : '=';
+		pkt_struct client_data;
+		m_pktSize = InitBuf ( client_data.buf, PKT_SIZE, main_pkt_char ) + sizeof ( int );
+		client_data.seq_nr = 1;
+		m_clientData[ sock ] = client_data;
+	}
+	
+	
 	e.getBuf ( (char*) &m_rxPkt, pktSize );
-	int outcome = memcmp ( &m_refPkt, &m_rxPkt, pktSize );
-	m_refPkt.seq_nr++;
+	int outcome = memcmp ( &m_clientData[ sock ], &m_rxPkt, pktSize );
+	m_clientData[ sock ].seq_nr++;
 	fprintf ( m_flowTrace, "%.3f:%u:%u:o:%d\n", GetUpTime ( ), m_rxPkt.seq_nr, pktSize, outcome );
-	printf ( "%d\n", m_rxPkt.seq_nr );
+	printf ( "%d:%d\n", m_rxPkt.seq_nr, sock );
 	#ifdef FLOW_FLUSH
 		fflush ( m_flowTrace );
 	#endif	
 	if ( outcome != 0 ) {
-		std::cout << "\n=========================================== 1\n" << std::endl;
-		std::cout.write( m_refPkt.buf, pktSize );
+		std::cout << "\n===========================================\n" << std::endl;
+		std::cout.write( m_clientData[ sock ].buf, pktSize );
 		std::cout << "\n===========================================\n" << std::endl;
 		std::cin.get();
 	}
