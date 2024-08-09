@@ -72,6 +72,7 @@ void Server::Start ( int protocols, int error )
 		}
 	}
 
+
 	netInitialize ( ); // Start networking
 	netShowFlow( false );
 	netShowVerbose( true );
@@ -81,6 +82,7 @@ void Server::Start ( int protocols, int error )
 	dbgprintf ( "Server IP: %s\n", getIPStr ( getHostIP() ).c_str() );	
 	dbgprintf ( "Listening on %d..\n", srv_port );
 }
+
 
 void Server::Close ( )
 {
@@ -95,6 +97,7 @@ void Server::ReceiveBulkPkt ( Event& e )
 {
 	int sock = e.getInt ( ); // Which client 
 	int pktSize = e.getInt ( );
+
 	if ( m_clientData.find( sock ) == m_clientData.end ( ) ) {
 		printf ( "*** Init state for server sock %d \n", sock );
 		char main_pkt_char = ( sock % 2 == 0 ) ? '-' : '=';
@@ -104,15 +107,16 @@ void Server::ReceiveBulkPkt ( Event& e )
 		m_clientData[ sock ] = client_data;
 	}
 	
-	
 	e.getBuf ( (char*) &m_rxPkt, pktSize );
 	int outcome = memcmp ( &m_clientData[ sock ], &m_rxPkt, pktSize );
 	m_clientData[ sock ].seq_nr++;
 	fprintf ( m_flowTrace, "%.3f:%u:%u:o:%d\n", GetUpTime ( ), m_rxPkt.seq_nr, pktSize, outcome );
 	printf ( "%d:%d\n", m_rxPkt.seq_nr, sock );
+
 	#ifdef FLOW_FLUSH
 		fflush ( m_flowTrace );
 	#endif	
+
 	if ( outcome != 0 ) {
 		std::cout << "\n===========================================\n" << std::endl;
 		std::cout.write( m_clientData[ sock ].buf, pktSize );
@@ -121,6 +125,7 @@ void Server::ReceiveBulkPkt ( Event& e )
 	}
 	netPrintf ( PRINT_FLOW, "Received event: %d, SEQ-%d", e.getSerializedLength(), m_rxPkt.seq_nr );
 }
+
 
 int Server::Process ( Event& e )
 {
@@ -131,7 +136,7 @@ int Server::Process ( Event& e )
 		// Enable netShowVerbose ( true ) for detailed messages; handle specific net error codes here..			
 		int code = e.getInt ( );		
 		if ( code == NET_DISCONNECTED ) {
-			dbgprintf ( "  Connection to client closed unexpectedly.\n" );
+			dbgprintf ( "    App. SRV Connection to client closed unexpectedly.\n" );
 		}		
 		return 0;
 	}
@@ -139,11 +144,11 @@ int Server::Process ( Event& e )
 	switch ( e.getName ( ) ) { // Process Network events
 		case 'sOkT': // Connection to client complete. (telling myself)
 			sock = e.getInt ( ); // Server sock		
-			dbgprintf ( "  Connected to client: #%d\n", sock );
+			dbgprintf ( "    App. SRV Connected to client: #%d\n", sock );
 			return 1;
 		case 'cFIN': // Client closed connection
 			sock = e.getInt();
-			dbgprintf ( "  Disconnected client: #%d\n", sock );
+			dbgprintf ( "    App. SRV Disconnected client: #%d\n", sock );
 			return 1;	
 	};
 	switch ( e.getName ( ) ) { // Process Application events
@@ -151,6 +156,6 @@ int Server::Process ( Event& e )
 			ReceiveBulkPkt ( e );
 			return 1;
 	};
-	dbgprintf ( "   Unhandled message: %s\n", e.getNameStr ( ).c_str ( ) );
+	dbgprintf ( "    App. SRV Unhandled message: %s\n", e.getNameStr ( ).c_str ( ) );
 	return 0;
 }

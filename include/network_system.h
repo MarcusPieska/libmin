@@ -189,11 +189,13 @@ private: // Functions
 	// Abtract socket functions
 	int netAddSocket ( int side, int mode, int state, bool block, NetAddr src, NetAddr dest );
 	int netFindSocket ( int side, int mode, int type );
-	int netFindSocket ( int side, int mode, NetAddr dest );
+	int netFindSocket ( int side, int mode, int state, NetAddr dest );
+	int netFindOrCreateSocket(str srv_name, netPort srv_port, netIP srv_ip, bool block );
 	int netFindOutgoingSocket ( bool bTcp );
-	int netManageHandshakeError ( int sock_i );
-	int netManageFatalError ( int sock_i, int force=0 );
+	int netManageHandshakeError ( int sock_i, std::string reason );
+	int netManageTransmitError ( int sock_i, std::string reason, int force = 0 );
 	int netDeleteSocket ( int sock_i, int force=0 );
+	netIP netResolveServerIP(str name, netPort port);
 	bool netIsError ( int result );	// Socket-specific error check
 	void netReportError ( int result );
 
@@ -206,6 +208,7 @@ private: // Functions
 	int netSocketListen ( int sock_i );
 	int netSocketAccept ( int sock_i,  SOCKET& tcp_sock, netIP& cli_ip, netPort& cli_port );	
 	int netSocketRecv ( int sock_i, char* buf, int buflen, int& recvlen); 
+	void netSocketReuse(int sock_i );
 	bool netSocketIsConnected ( int sock_i );
 	bool netSocketIsSelected ( fd_set* sockSet, int sock_i );
 	int netSocketSelect ( fd_set* sockReadSet, fd_set* sockWriteSet );
@@ -213,10 +216,7 @@ private: // Functions
 
 	// Short helpers, used to simplify the program elsewhere
 	void sleep_ms ( int time_ms );
-	unsigned long get_read_ready_bytes ( SOCKET sock_h );
-	void make_sock_no_delay ( SOCKET sock_h );
-	void make_sock_block ( SOCKET sock_h );
-	void make_sock_non_block ( SOCKET sock_h );
+	unsigned long get_read_ready_bytes ( SOCKET sock_h );		
 	bool invalid_socket_index ( int sock_i );
 	
 	// Handling tracing and logging
@@ -231,6 +231,7 @@ private: // Functions
 	void CXSetHostname ( );
 	void CXSocketApiInit ( );
 	void CXSocketMakeBlock ( SOCKET sock_h, bool block = false );
+	void CXSocketMakeNoDelay ( SOCKET sock_h );
 	unsigned long CXSocketReadBytes ( SOCKET sock_h );
 	int CXSocketIvalid ( SOCKET sock_h );
 	int CXSocketError ( SOCKET sock_h );
@@ -238,6 +239,7 @@ private: // Functions
 	str CXGetErrorMsg ( int& error_id );
 	void CXSocketUpdateAddr ( int sock_i, bool src = true );
 	void CXSocketClose ( SOCKET sock_h );
+	bool CXIsConnectError ( std::string& msg );
 	str CXGetIpStr ( netIP ip );
 	
 private: // State

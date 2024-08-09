@@ -38,6 +38,7 @@ double Client::GetUpTime ( )
 	return current_time.GetElapsedSec ( m_startTime );
 }
 
+
 void Client::Start ( std::string srv_addr,  int pkt_limit, int protocols, int error )
 {
 	m_srvAddr = srv_addr;
@@ -51,14 +52,14 @@ void Client::Start ( std::string srv_addr,  int pkt_limit, int protocols, int er
 		dbgprintf ( "Using TCP only \n" );
 		m_srvPort = 16100; 
 		netSetSecurityLevel ( NET_SECURITY_PLAIN_TCP );	
-		netSetReconnectLimit ( 10 );
-		netSetReconnectInterval ( 500 );
+		netSetReconnectLimit ( 50 );
+		netSetReconnectInterval ( 1000 );
 	} else if ( protocols == PROTOCOL_SSL_ONLY ) {	
 		dbgprintf ( "Using OpenSSL only \n" );
 		m_srvPort = 16101; 
 		netSetSecurityLevel ( NET_SECURITY_OPENSSL );	
-		netSetReconnectLimit ( 10 );
-		netSetReconnectInterval ( 500 );
+		netSetReconnectLimit ( 50 );
+		netSetReconnectInterval ( 1000 );
 		if ( error != ERROR_MISSING_CLIENT_KEYS ) {
 			netSetPathToPublicKey ( "server_pubkey.pem" );
 		} 
@@ -73,7 +74,7 @@ void Client::Start ( std::string srv_addr,  int pkt_limit, int protocols, int er
 		} 
 	}
 
-	m_currtime.SetTimeNSec ( ); // Start timer
+	m_currtime.SetTimeNSec ( ); //  rt timer
 	m_lasttime = m_currtime;
 	m_seq = 0;
 	srand ( m_currtime.GetMSec ( ) );
@@ -99,21 +100,22 @@ void Client::Close ( )
 	netCloseConnection ( m_sock );
 }
 
+
 int Client::Process ( Event& e )
 {
-	std::string line;
+	std::string line; 
 	eventStr_t sys = e.getTarget ( );
 	if ( sys == 'net ' && e.getName ( ) =='nerr' ) { // Check for net error events
 		// Enable netShowVerbose ( true ) for detailed messages; handle specific net error codes here..		
 		int code = e.getInt ( );
 		return 0;
 	}
-	e.startRead ( ); // Process Network events
+	e.startRead ( );  // Process Network events
 	switch ( e.getName ( ) ) {
 		case 'sOkT': { // Connection complete. server accepted OK.
 			int srv_sock = e.getInt ( ); 
 			int cli_sock = e.getInt ( ); 
-			dbgprintf( "App. Connected to server: %s, %d\n", getSock( cli_sock )->dest.name.c_str ( ), srv_sock );
+			dbgprintf( "    App. CLI Connected to server: %s, %d\n", getSock( cli_sock )->dest.name.c_str ( ), srv_sock );
 			return 1;
 		} break;	
 	};
@@ -121,15 +123,15 @@ int Client::Process ( Event& e )
 	switch ( e.getName ( ) ) {
 		case 'sRst': { // Process Application events, send back the words
 			std::string words = e.getStr ( );
-			dbgprintf ( "App. Result from server: %s\n", words.c_str ( ) );
+			dbgprintf ( "    App. CLI Result from server: %s\n", words.c_str ( ) );
 			return 1;
 		} 
 		case 'sFIN': { // Server shutdown unexpectedly
-			dbgprintf ( "App. Server disconnected.\n" );
+			dbgprintf ( "    App. CLI found Server disconnected.\n" );
 			return 1;
 		} 
 	};
-	dbgprintf ( "App. Unhandled message: %s\n", e.getNameStr ( ).c_str ( ) );
+	dbgprintf ( "    App. CLI Unhandled message: %s\n", e.getNameStr ( ).c_str ( ) );
 	return 0;
 }
 
@@ -162,7 +164,6 @@ void Client::SendPackets ( )
 		printf ( "%d\n", m_txPkt.seq_nr );
 	}
 }
-
 int Client::Run ( ) 
 {
 	m_currtime.SetTimeNSec ( );	
