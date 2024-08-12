@@ -89,6 +89,7 @@ void Client::Start ( std::string srv_addr,  int pkt_limit, int protocols, int er
 	dbgprintf ( "App. Client IP: %s\n", getIPStr ( getHostIP ( ) ).c_str ( ) );	
 }
 
+
 void Client::Reconnect ( )
 {   
 	dbgprintf ( "App. Connecting..\n" );	
@@ -99,7 +100,6 @@ void Client::Close ( )
 {
 	netCloseConnection ( m_sock );
 }
-
 
 int Client::Process ( Event& e )
 {
@@ -180,3 +180,4 @@ int Client::Run ( )
 	}
 	return netProcessQueue ( ); // Process event queue
 }
+

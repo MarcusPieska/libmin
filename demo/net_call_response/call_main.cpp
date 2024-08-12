@@ -77,7 +77,7 @@ int main ( int argc, char* argv [] )
         Client cli ( "../trace-func-call-client" );
         std::string srv_addr = get_arg_val ( argc, argv, "--addr", "-a", "127.0.0.1" );
         int pkt_limit = std::stoi ( get_arg_val ( argc, argv, "--packets", "-p", "100" ) );
-        cli.Start( srv_addr, pkt_limit );
+        cli.Start( srv_addr );
         while ( !_kbhit ( ) ) {
             cli.Run ( );
         }

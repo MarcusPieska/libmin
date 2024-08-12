@@ -116,9 +116,10 @@ int Server::BuildTestBuffer ( int test_id )
 
 			// make event
 			Event e = new_event(event_sz - header_sz, 'app ', 'cTst', 0, getNetPool());
-			payload_sz = event_sz - header_sz - sizeof(int);		// event = header + payload + verify_int
+			payload_sz = event_sz - header_sz - 2*sizeof(int);		// event = header + payload + verify_int
 			str = std::string(payload_sz, i + 65);					// make test str of identical chars
 			memcpy(buf, str.c_str(), payload_sz);
+			e.attachInt ( 0 );						// sock id (none)
 			e.attachBuf(buf, payload_sz);
 			e.attachInt(event_sz);								// put verification length at end of event
 			printf("  #%d, %d bytes, %s, %.5s\n", i, event_sz, e.getNameStr().c_str(), str.c_str());
@@ -201,7 +202,7 @@ int Server::Run ()
 		}
 		
 		// reset stream in case the debug stream was partial/incomplete
-		netResetRecvBuf ();
+		netResetBufs ();
 	}
 
 	// process event queue
@@ -241,14 +242,14 @@ int Server::Process ( Event& e )
 		break;	
 	case 'cTst': {			// events from deserialize tests
 		// recv test event
-		int payload_sz = e.getDataLength() - sizeof(int);
+		sock = e.getInt();
+		int payload_sz = e.getDataLength() - 2*sizeof(int);
 		e.getBuf( buf, payload_sz );
 		int verify_len = e.getInt();
-
 		int event_len = e.getDataLength() + Event::staticSerializedHeaderSize();
 
 		if (event_len == verify_len) {
-			dbgprintf("  App. Got event: %d, cTst, %.5s\n", event_len, buf );
+			dbgprintf("  App. Got event: %d, cTst, %.5s, #%d\n", event_len, buf, sock );
 		}
 		else {
 			dbgprintf("  App. **ERROR** Got event: %d, should be %d bytes.\n", event_len, verify_len );

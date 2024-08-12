@@ -142,11 +142,12 @@ void Client::TransmitTestBuffer ()
 				
 		// make event
 		Event e = new_event( event_sz - header_sz, 'app ', 'cTst', 0, getNetPool());	
-		payload_sz = event_sz - header_sz - sizeof(int);		// event = header + payload + verify_int
+		payload_sz = event_sz - header_sz - 2*sizeof(int);		// event = header + sock int + payload + verify_int		
 		str = std::string(payload_sz, i + 65);					// make test str of identical chars
 		memcpy(buf, str.c_str(), payload_sz);
-		e.attachBuf(buf, payload_sz);
-		e.attachInt(event_sz);									// put verification length at end of event
+		e.attachInt ( getServerSock (mSock) );
+		e.attachBuf( buf, payload_sz );
+		e.attachInt( event_sz );									// put verification length at end of event
 		printf("  Client sent: #%d, %d bytes, %s, %.5s\n", i, event_sz, e.getNameStr().c_str(), str.c_str());
 
 		netSend(e);
