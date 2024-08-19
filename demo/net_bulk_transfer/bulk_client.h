@@ -21,7 +21,8 @@ public:
 	int InitBuf ( char* buf, const int size, char main_pkt_char );
 	void SendPackets ( );
 	double GetUpTime ( );
-
+	bool TxActive ( );
+	
 private:
 	std::string m_srvAddr;
 	bool m_hasConnected;

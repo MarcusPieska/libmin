@@ -167,7 +167,7 @@ public:
 	str 		getIPStr ( netIP ip ); // return IP as a string
 	netIP		getStrToIP ( str name );
 
-protected:
+public:
 	str netPrintf ( int flag, const char* fmt, ... );
 
 private: // MP: Move this stuff

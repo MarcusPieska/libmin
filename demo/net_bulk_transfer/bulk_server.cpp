@@ -106,21 +106,25 @@ void Server::ReceiveBulkPkt ( Event& e )
 		client_data.seq_nr = 1;
 		m_clientData[ sock ] = client_data;
 	}
-	
 	e.getBuf ( (char*) &m_rxPkt, pktSize );
-	int outcome = memcmp ( &m_clientData[ sock ], &m_rxPkt, pktSize );
+	if ( m_rxPkt.seq_nr == 1 ) {
+		m_clientData[ sock ].seq_nr = 1;
+	}
+	int outcome = memcmp ( &m_clientData[ sock ], &m_rxPkt, pktSize - 4 );
 	m_clientData[ sock ].seq_nr++;
 	fprintf ( m_flowTrace, "%.3f:%u:%u:o:%d\n", GetUpTime ( ), m_rxPkt.seq_nr, pktSize, outcome );
-	printf ( "%d:%d\n", m_rxPkt.seq_nr, sock );
+	printf ( "%d:%d:%d\n", m_rxPkt.seq_nr, pktSize, sock );
 
 	#ifdef FLOW_FLUSH
 		fflush ( m_flowTrace );
 	#endif	
 
 	if ( outcome != 0 ) {
-		std::cout << "\n===========================================\n" << std::endl;
-		std::cout.write( m_clientData[ sock ].buf, pktSize );
-		std::cout << "\n===========================================\n" << std::endl;
+		std::cout << "\n=========================================== " << m_rxPkt.seq_nr << " \n" << std::endl;
+		std::cout.write( m_rxPkt.buf, pktSize - sizeof ( int ) );
+		std::cout << "\n=========================================== " << m_clientData[ sock ].seq_nr << " \n" << std::endl;
+		std::cout.write( m_clientData[ sock ].buf, pktSize - sizeof ( int ) );
+		std::cout << "\n=========================================== " << outcome << " \n" << std::endl;
 		std::cin.get();
 	}
 	netPrintf ( PRINT_FLOW, "Received event: %d, SEQ-%d", e.getSerializedLength(), m_rxPkt.seq_nr );

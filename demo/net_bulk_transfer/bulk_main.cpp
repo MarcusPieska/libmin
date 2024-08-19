@@ -54,7 +54,6 @@ bool str_exists_in_args ( int argc, char** argv, const char* to_find1, const cha
 int main ( int argc, char* argv [] )
 {
 	addSearchPath ( ASSET_PATH );
-
     //----- network performance profiling	
     // - libmin must be built with PROFILE_NET and USE_NVTX
     // - for CPU netRecv will show >1/ms due to perf printfs, use nvtx markers for better analysis
@@ -76,10 +75,18 @@ int main ( int argc, char* argv [] )
         std::string srv_addr = get_arg_val ( argc, argv, "--addr", "-a", "127.0.0.1" );
         int pkt_limit = std::stoi ( get_arg_val ( argc, argv, "--limit", "-l", "100" ) );
         cli.Start( srv_addr, pkt_limit, protocols, error );
-        while ( !_kbhit ( ) ) {
+        while ( !_kbhit ( ) && cli.TxActive ( ) ) {
             cli.Run ( );
         }
         cli.Close ( );
+        if ( str_exists_in_args ( argc, argv, "--dlx2", "--dlx2" ) ) {
+			Client cli ( "../trace-func-call-client" );
+			cli.Start( srv_addr, pkt_limit, protocols, error );
+			while ( !_kbhit ( ) && cli.TxActive ( ) ) {
+				cli.Run ( );
+			}
+			cli.Close ( );
+		}
     }
 	return 1;
 }

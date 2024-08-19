@@ -26,11 +26,12 @@ app = "net_bulk_transfer/net_bulk"
 prot_server, error_server = 2, 0
 prot_client, error_client = 2, 0
 client_args = "--prot %d  --error %d --limit 1000" %(prot_client, error_client)
-paths = ["../build/%s" %(app), "../build/%s" %(app), "../build/%s" %(app)]
-args = ["-s --prot %d  --error %d" %(prot_server, error_server), client_args, client_args]
-addrs = ["10.0.10.1", "10.0.20.2", "10.0.20.2"]
-intfs = ["h2-dev-r1", "h1-dev-r1", "h1-dev-r1"]
-contexts = ["ip netns exec emu-h2", "ip netns exec emu-h1", "ip netns exec emu-h1"]
+paths = ["../build/%s" %(app), "../build/%s" %(app), "../build/%s" %(app), "../build/%s" %(app)]
+args = ["-s --prot %d  --error %d" %(prot_server, error_server), client_args, client_args, client_args]
+addrs = ["10.0.10.1", "10.0.20.2", "10.0.20.2", "10.0.20.2"]
+intfs = ["h2-dev-r1", "h1-dev-r1", "h1-dev-r1", "h1-dev-r1"]
+contexts = ["ip netns exec emu-h2", "ip netns exec emu-h1", "ip netns exec emu-h1", "ip netns exec emu-h1"]
+sleep_times = [0.1, 0.1, 5.0, 1.0]
 
 timeout = "timeout -k %s %s" %(str(duration), str(duration))
 for c, i in zip(contexts, intfs): 
@@ -40,9 +41,9 @@ for c, i in zip(contexts, intfs):
   print("Command: '%s'" %(run_command))
   os.system(run_command)
   
-for path, addr, context, arg in zip(paths, addrs, contexts, args): 
+for path, addr, context, arg, sleep_time in zip(paths, addrs, contexts, args, sleep_times): 
   run_command = "%s xterm -hold -e '%s %s --addr %s' &" %(context, path, arg, addr)
   print("Running server executable in a new xterm window...\n")
   print("Command: '%s'" %(run_command))
   os.system(run_command)
-  time.sleep(0.1)
+  time.sleep(sleep_time)

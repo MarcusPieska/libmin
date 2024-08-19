@@ -38,6 +38,11 @@ double Client::GetUpTime ( )
 	return current_time.GetElapsedSec ( m_startTime );
 }
 
+bool Client::TxActive ( )
+{
+	return m_txPkt.seq_nr < m_pktLimit;
+}
+
 
 void Client::Start ( std::string srv_addr,  int pkt_limit, int protocols, int error )
 {
@@ -47,6 +52,7 @@ void Client::Start ( std::string srv_addr,  int pkt_limit, int protocols, int er
 	m_hasConnected = false;
 	m_pktSize = 0;
 	m_pktLimit = pkt_limit;
+	m_txPkt.seq_nr = 0;
  
 	if ( protocols == PROTOCOL_TCP_ONLY ) {
 		dbgprintf ( "Using TCP only \n" );
