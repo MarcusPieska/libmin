@@ -172,18 +172,25 @@ void Client::SendPackets ( )
 }
 int Client::Run ( ) 
 {
-	m_currtime.SetTimeNSec ( );	
-	float elapsed_sec = m_currtime.GetElapsedSec ( m_lasttime );
-	if ( elapsed_sec >= 0.5 ) { // Demo app - request the words for a random number every 2 secs
-		m_lasttime = m_currtime;
-		if ( netIsConnectComplete ( m_sock ) ) {	
-			m_hasConnected = true;		
-			SendPackets ( );
-		} else if ( ! m_hasConnected ) {
-			Reconnect ( ); // If disconnected, try and reconnect
-			m_hasConnected = true;	
+	// Transmit if bulk packets pending
+	if ( TxActive () ) {
+		m_currtime.SetTimeNSec ( );	
+		float elapsed_sec = m_currtime.GetElapsedSec ( m_lasttime );
+	 
+		// Transmission rate
+		if ( elapsed_sec >= 0.5 ) {		
+			m_lasttime = m_currtime;
+			if ( netIsConnectComplete ( m_sock ) ) {	
+				m_hasConnected = true;		
+				SendPackets ( );
+			} else if ( ! m_hasConnected ) {
+				Reconnect ( ); // If disconnected, try and reconnect
+				m_hasConnected = true;	
+			}
 		}
 	}
-	return netProcessQueue ( ); // Process event queue
+
+	// Process event queue 
+	return netProcessQueue ( ); 
 }
 
